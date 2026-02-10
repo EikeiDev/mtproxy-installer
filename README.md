@@ -46,15 +46,19 @@
 
 ## 📋 Использование
 
+**Установка:**
 ```bash
-# Установка
 bash <(wget -q -O - https://raw.githubusercontent.com/EikeiDev/mtproxy-installer/refs/heads/main/mtproxy.sh)
+```
 
-# Управление
+**Управление:**
+```bash
 mtproxy status
 mtproxy restart
+```
 
-# Удаление
+**Удаление:**
+```bash
 bash <(wget -q -O - https://raw.githubusercontent.com/EikeiDev/mtproxy-installer/refs/heads/main/mtproxy.sh) uninstall
 ```
 
