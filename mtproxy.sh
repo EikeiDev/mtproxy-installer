@@ -351,7 +351,7 @@ StartLimitIntervalSec=60
 [Service]
 Type=simple
 WorkingDirectory=$INSTALL_DIR
-ExecStart=$INSTALL_DIR/mtproto-proxy -u nobody -p $STATS_PORT -H $PORT -S $USER_SECRET -D $TLS_DOMAIN $NAT_INFO --aes-pwd $INSTALL_DIR/proxy-secret $INSTALL_DIR/proxy-multi.conf -M $WORKERS
+ExecStart=$INSTALL_DIR/mtproto-proxy -u nobody -p $STATS_PORT -H $PORT -S $USER_SECRET -D $TLS_DOMAIN $NAT_INFO --http-stats --aes-pwd $INSTALL_DIR/proxy-secret $INSTALL_DIR/proxy-multi.conf -M $WORKERS
 Restart=always
 RestartSec=10
 KillMode=mixed
