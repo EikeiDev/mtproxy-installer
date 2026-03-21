@@ -51,7 +51,7 @@ Automated installer and manager for **MTProxy** based on [GetPageSpeed/MTProxy](
 
 **Installation:**
 ```bash
-bash <(wget -q -O - https://raw.githubusercontent.com/EikeiDev/mtproxy-installer/refs/heads/main/mtproxy.sh)
+sh <(wget -q -O - https://raw.githubusercontent.com/EikeiDev/mtproxy-installer/refs/heads/main/mtproxy.sh)
 ```
 
 **Management:**
