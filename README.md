@@ -51,7 +51,7 @@
 
 **Установка:**
 ```bash
-bash <(wget -q -O - https://raw.githubusercontent.com/EikeiDev/mtproxy-installer/refs/heads/main/mtproxy.sh)
+sh <(wget -q -O - https://raw.githubusercontent.com/EikeiDev/mtproxy-installer/refs/heads/main/mtproxy.sh)
 ```
 
 **Управление:**
