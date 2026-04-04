@@ -46,7 +46,6 @@ After installation, a handy manager is accessible from anywhere using `teleproxy
 ```bash
 bash <(wget -q -O - https://raw.githubusercontent.com/EikeiDev/mtproxy-installer/refs/heads/main/mtproxy.sh)
 ```
-*(Change the URL to match your repo structure)*
 
 **Management:**
 ```bash
