@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# MTProxy Installation Script (GetPageSpeed/MTProxy - C binary)
-# Builds from source, creates systemd service with custom port,
-# saves secrets to info.txt and creates management utility in /usr/local/bin/mtproxy
+# Teleproxy Installation Script
+# Downloads binary, creates TOML config, creates systemd service,
+# and creates management utility in /usr/local/bin/teleproxy-ctl
 #
 # Usage:
-#   ./mtproxy.sh          - Install MTProxy
-#   ./mtproxy.sh uninstall - Remove MTProxy completely
+#   ./mtproxy.sh          - Install Teleproxy
+#   ./mtproxy.sh uninstall - Remove Teleproxy completely
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -17,107 +17,80 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 # Language selection
-echo -e "${BLUE}MTProxy Installer${NC}"
+echo -e "${BLUE}Teleproxy Installer${NC}"
 echo -e "${CYAN}1${NC} - English"
 echo -e "${CYAN}2${NC} - Русский"
 read -p "Select language / Выберите язык [1/2]: " LANG_CHOICE
 [[ "$LANG_CHOICE" == "2" ]] && LANG_SEL="ru" || LANG_SEL="en"
 
 # Save language for management utility
-mkdir -p /opt/MTProxy
-echo "$LANG_SEL" > /opt/MTProxy/lang
+mkdir -p /etc/teleproxy
+echo "$LANG_SEL" > /etc/teleproxy/lang
 
 set_messages() {
 if [[ "$1" == "ru" ]]; then
-    MSG_TITLE="Установка MTProxy (GetPageSpeed Fork)"
+    MSG_TITLE="Установка Teleproxy"
     MSG_ROOT="Этот установщик должен быть запущен от root (используйте sudo)."
-    MSG_UNINSTALL_TITLE="🗑️  Удаление MTProxy"
-    MSG_UNINSTALL_WARN="ВНИМАНИЕ: Это полностью удалит MTProxy и все связанные файлы!"
+    MSG_UNINSTALL_TITLE="🗑️  Удаление Teleproxy"
+    MSG_UNINSTALL_WARN="ВНИМАНИЕ: Это полностью удалит Teleproxy и все связанные файлы!"
     MSG_UNINSTALL_LIST="Будет удалено:"
-    MSG_UNINSTALL_I1="Сервис: /etc/systemd/system/mtproxy.service"
-    MSG_UNINSTALL_I2="Директория: /opt/MTProxy"
-    MSG_UNINSTALL_I3="Утилита: /usr/local/bin/mtproxy"
-    MSG_UNINSTALL_I4="Cron задача: /etc/cron.daily/mtproxy-update-config"
-    MSG_UNINSTALL_I5="Все конфигурации и секреты"
+    MSG_UNINSTALL_I1="Сервис: /etc/systemd/system/teleproxy.service"
+    MSG_UNINSTALL_I2="Директория: /etc/teleproxy (конфигурации)"
+    MSG_UNINSTALL_I3="Утилиты: /usr/local/bin/teleproxy, /usr/local/bin/teleproxy-ctl, и скрипт обновления"
+    MSG_UNINSTALL_I4="Системный пользователь: teleproxy"
+    MSG_UNINSTALL_I5="Cron задача: /etc/cron.d/teleproxy-updater"
     MSG_UNINSTALL_CONFIRM="Вы уверены? (введите 'YES' для подтверждения): "
     MSG_UNINSTALL_CANCEL="Удаление отменено."
-    MSG_REMOVING="Удаление MTProxy..."
-    MSG_STOPPING="Остановка сервиса MTProxy..."
-    MSG_DISABLING="Отключение сервиса MTProxy..."
+    MSG_REMOVING="Удаление Teleproxy..."
+    MSG_STOPPING="Остановка сервиса Teleproxy..."
+    MSG_DISABLING="Отключение сервиса Teleproxy..."
     MSG_RM_FIREWALL="Удаление правила файрвола для порта"
     MSG_RM_SERVICE="Удаление файла сервиса..."
-    MSG_RM_INSTALLDIR="Удаление директории /opt/MTProxy..."
-    MSG_RM_UTILITY="Удаление утилиты управления..."
-    MSG_RM_CRON="Удаление cron задачи..."
-    MSG_UNINSTALL_DONE="✅ MTProxy полностью удалён!"
+    MSG_RM_INSTALLDIR="Удаление директории /etc/teleproxy..."
+    MSG_RM_UTILITY="Удаление бинарника и утилиты управления..."
+    MSG_RM_USER="Удаление пользователя teleproxy..."
+    MSG_UNINSTALL_DONE="✅ Teleproxy полностью удалён!"
     MSG_UNINSTALL_DONE2="Все файлы, сервисы и конфигурации удалены."
-    MSG_HELP_TITLE="Скрипт установки MTProxy"
+    MSG_HELP_TITLE="Скрипт установки Teleproxy"
     MSG_HELP_USAGE="Использование:"
-    MSG_HELP_INSTALL="Установить MTProxy с интерактивной настройкой"
-    MSG_HELP_UNINSTALL="Полностью удалить MTProxy и все файлы"
+    MSG_HELP_INSTALL="Установить Teleproxy с интерактивной настройкой"
+    MSG_HELP_UNINSTALL="Полностью удалить Teleproxy и все файлы"
     MSG_HELP_HELP="Показать эту справку"
-    MSG_HELP_AFTER="После установки используйте команду 'mtproxy' для управления."
+    MSG_HELP_AFTER="После установки используйте команду 'teleproxy-ctl' для управления."
     MSG_ERR_UNKNOWN="Ошибка: Неизвестный аргумент"
     MSG_ERR_USAGE="Используйте '$0 help' для справки."
     MSG_PORT_PROMPT="Введите порт прокси (по умолчанию"
-    MSG_INSTALLING="Установка MTProxy (GetPageSpeed fork)..."
-    MSG_DEPS="Установка зависимостей для сборки..."
-    MSG_NO_APT="apt не найден. Скрипт поддерживает только Debian/Ubuntu (apt)."
-    MSG_DEPS_MANUAL="Установите зависимости вручную: git curl build-essential libssl-dev zlib1g-dev xxd."
-    MSG_CLONING="Клонирование репозитория GetPageSpeed/MTProxy..."
-    MSG_SRC_EXISTS="Директория исходников существует, обновление..."
-    MSG_BUILDING="Сборка MTProxy (это может занять минуту)..."
-    MSG_BUILD_OK="Сборка успешна!"
-    MSG_BUILD_FAIL="Ошибка сборки! Проверьте зависимости."
+    MSG_INSTALLING="Установка Teleproxy..."
+    MSG_DEPS="Установка зависимостей..."
+    MSG_NO_APT="apt не найден. Установите curl и xxd вручную."
+    MSG_DEPS_MANUAL="Установите: curl, xxd."
+    MSG_DOWNLOADING="Загрузка бинарника Teleproxy..."
+    MSG_DOWNLOAD_FAIL="Установка не удалась! Проверьте вашу архитектуру ОС и сеть."
     MSG_BIN_INSTALLED="Бинарник установлен в"
-    MSG_DL_CONFIG="Загрузка конфигурации Telegram прокси..."
-    MSG_DL_FAIL_SECRET="Не удалось загрузить proxy-secret"
-    MSG_DL_FAIL_CONFIG="Не удалось загрузить proxy-multi.conf"
-    MSG_DL_OK="Конфигурация Telegram загружена"
     MSG_SECRET_EXISTING="Используется существующий секрет:"
     MSG_SECRET_NEW="Сгенерирован новый секрет:"
     MSG_GET_IP="Получение внешнего IPv4 адреса..."
     MSG_IP_FAIL="Не удалось определить внешний IPv4 адрес"
     MSG_IP_MANUAL="Проверьте IPv4 вручную: curl -4 ifconfig.me"
     MSG_IP_OK="Обнаружен внешний IPv4:"
-    MSG_DOMAIN_TITLE="🌐 Настройка домена (опционально):"
-    MSG_DOMAIN_DESC="Вы можете использовать доменное имя вместо IP адреса."
+    MSG_DOMAIN_TITLE="🌐 Настройка домена сервера (опционально):"
+    MSG_DOMAIN_DESC="Вы можете использовать доменное имя вместо IP адреса для ссылок."
     MSG_DOMAIN_EXAMPLES="Примеры: proxy.example.com, vpn.mydomain.org"
     MSG_DOMAIN_EMPTY="Оставьте пустым для использования IP:"
-    MSG_DOMAIN_PROMPT="Введите доменное имя (опционально): "
+    MSG_DOMAIN_PROMPT="Введите доменное имя сервера (опционально): "
     MSG_DOMAIN_USING="Используется домен:"
-    MSG_DOMAIN_DNS="Проверка DNS домена..."
-    MSG_DOMAIN_WARN="DNS не совпадает с внешним IP."
-    MSG_DOMAIN_ARECORD="Убедитесь, что A-запись указывает на"
-    MSG_DOMAIN_DNS_OK="DNS в порядке."
     MSG_DOMAIN_INVALID="Неверный формат домена. Используется IP адрес."
     MSG_DOMAIN_IP="Используется IP адрес:"
-    MSG_TLS_TITLE="🔒 Настройка TLS домена:"
-    MSG_TLS_DESC="MTProxy использует домен для маскировки TLS сертификата."
-    MSG_TLS_DESC2="Случайные домены безопаснее, чем google.com по умолчанию"
-    MSG_TLS_EXAMPLES="Примеры: google.com, cloudflare.com, microsoft.com"
+    MSG_TLS_TITLE="🔒 Настройка TLS домена (Fake-TLS Маскировка):"
+    MSG_TLS_DESC="Teleproxy использует домен для маскировки под обычный трафик HTTPS."
+    MSG_TLS_EXAMPLES="Примеры: cloudflare.com, microsoft.com, apple.com"
     MSG_TLS_PROMPT="Введите TLS домен для маскировки (по умолчанию"
-    MSG_TLS_CHECK="Проверка поддержки TLS 1.3 для"
-    MSG_TLS_OK="✅ поддерживает TLS 1.3"
-    MSG_TLS_FAIL="⚠️  НЕ поддерживает TLS 1.3"
-    MSG_TLS_REQUIRED="MTProxy EE режим требует домен с поддержкой TLS 1.3 + x25519."
-    MSG_TLS_OPT1="1 - Ввести другой домен"
-    MSG_TLS_OPT2="2 - Продолжить (подключение может не работать)"
-    MSG_TLS_CHOICE="Ваш выбор [1/2]: "
-    MSG_TLS_CONTINUE="Продолжение с"
-    MSG_TLS_PROMPT2="Введите TLS домен: "
-    MSG_TLS_NO_OPENSSL="⚠️  openssl не найден, пропуск проверки TLS 1.3"
     MSG_TLS_USING="Используется TLS домен:"
-    MSG_NAT_CHECK="Проверка NAT конфигурации..."
-    MSG_NAT_YES="NAT обнаружен: (будет использован --nat-info)"
-    MSG_NAT_NO="NAT не обнаружен (прямое подключение)"
-    MSG_WORKERS="Используется 1 воркер (рекомендовано для TLS)"
+    MSG_WORKERS="Используется 1 воркер (по умолчанию)"
     MSG_SERVICE_CREATE="Создание systemd сервиса..."
     MSG_UFW_OPEN="UFW: Открыт порт"
-    MSG_CRON_CREATE="Создание ежедневной cron задачи обновления..."
-    MSG_CRON_OK="Cron задача создана:"
-    MSG_UTIL_CREATE="Создание утилиты управления..."
-    MSG_SVC_RUNNING="✅ Сервис MTProxy запущен!"
+    MSG_UTIL_CREATE="Создание утилиты управления teleproxy-ctl..."
+    MSG_SVC_RUNNING="✅ Сервис Teleproxy запущен!"
     MSG_SVC_FAIL="❌ Сервис не удалось запустить"
     MSG_COMPLETE="🎉 Установка завершена!"
     MSG_QUICK="📋 Быстрые команды:"
@@ -125,103 +98,75 @@ if [[ "$1" == "ru" ]]; then
     MSG_QUICK2="Перезапуск сервиса"
     MSG_QUICK3="Ссылки подключения"
     MSG_QUICK4="Статистика прокси"
-    MSG_QUICK5="Обновить конфиг Telegram"
     MSG_QUICK6="Все команды"
     MSG_SAVED="📄 Конфигурация сохранена в:"
     MSG_UTIL_PATH="🔧 Утилита управления:"
     MSG_AUTOSTART="🔄 Сервис запускается автоматически"
-    MSG_STATS_INFO="📊 Статистика:"
-    MSG_REMOVE_LATER="💡 Для полного удаления MTProxy:"
+    MSG_STATS_INFO="📊 QR коды и Статистика:"
+    MSG_REMOVE_LATER="💡 Для полного удаления:"
 else
-    MSG_TITLE="MTProxy Installation (GetPageSpeed Fork)"
+    MSG_TITLE="Teleproxy Installation"
     MSG_ROOT="This installer must be run as root (use sudo)."
-    MSG_UNINSTALL_TITLE="🗑️  MTProxy Uninstallation"
-    MSG_UNINSTALL_WARN="WARNING: This will completely remove MTProxy and all related files!"
+    MSG_UNINSTALL_TITLE="🗑️  Teleproxy Uninstallation"
+    MSG_UNINSTALL_WARN="WARNING: This will completely remove Teleproxy and all related files!"
     MSG_UNINSTALL_LIST="The following will be deleted:"
-    MSG_UNINSTALL_I1="Service: /etc/systemd/system/mtproxy.service"
-    MSG_UNINSTALL_I2="Installation directory: /opt/MTProxy"
-    MSG_UNINSTALL_I3="Management utility: /usr/local/bin/mtproxy"
-    MSG_UNINSTALL_I4="Cron job: /etc/cron.daily/mtproxy-update-config"
-    MSG_UNINSTALL_I5="All configuration files and secrets"
+    MSG_UNINSTALL_I1="Service: /etc/systemd/system/teleproxy.service"
+    MSG_UNINSTALL_I2="Configuration directory: /etc/teleproxy"
+    MSG_UNINSTALL_I3="Binaries: /usr/local/bin/teleproxy, /usr/local/bin/teleproxy-ctl, and updater script"
+    MSG_UNINSTALL_I4="System user: teleproxy"
+    MSG_UNINSTALL_I5="Cron job: /etc/cron.d/teleproxy-updater"
     MSG_UNINSTALL_CONFIRM="Are you sure? (type 'YES' to confirm): "
     MSG_UNINSTALL_CANCEL="Uninstallation cancelled."
-    MSG_REMOVING="Removing MTProxy..."
-    MSG_STOPPING="Stopping MTProxy service..."
-    MSG_DISABLING="Disabling MTProxy service..."
+    MSG_REMOVING="Removing Teleproxy..."
+    MSG_STOPPING="Stopping Teleproxy service..."
+    MSG_DISABLING="Disabling Teleproxy service..."
     MSG_RM_FIREWALL="Removing firewall rule for port"
     MSG_RM_SERVICE="Removing service file..."
-    MSG_RM_INSTALLDIR="Removing installation directory /opt/MTProxy..."
-    MSG_RM_UTILITY="Removing management utility..."
-    MSG_RM_CRON="Removing cron job..."
-    MSG_UNINSTALL_DONE="✅ MTProxy has been completely removed!"
+    MSG_RM_INSTALLDIR="Removing configuration directory /etc/teleproxy..."
+    MSG_RM_UTILITY="Removing binaries and management utility..."
+    MSG_RM_USER="Removing system user teleproxy..."
+    MSG_UNINSTALL_DONE="✅ Teleproxy has been completely removed!"
     MSG_UNINSTALL_DONE2="All files, services, and configurations have been deleted."
-    MSG_HELP_TITLE="MTProxy Installation Script"
+    MSG_HELP_TITLE="Teleproxy Installation Script"
     MSG_HELP_USAGE="Usage:"
-    MSG_HELP_INSTALL="Install MTProxy with interactive setup"
-    MSG_HELP_UNINSTALL="Completely remove MTProxy and all files"
+    MSG_HELP_INSTALL="Install Teleproxy with interactive setup"
+    MSG_HELP_UNINSTALL="Completely remove Teleproxy and all files"
     MSG_HELP_HELP="Show this help message"
-    MSG_HELP_AFTER="After installation, use 'mtproxy' command to manage the service."
+    MSG_HELP_AFTER="After installation, use 'teleproxy-ctl' command to manage the service."
     MSG_ERR_UNKNOWN="Error: Unknown argument"
     MSG_ERR_USAGE="Use '$0 help' for usage information."
     MSG_PORT_PROMPT="Enter proxy port (default"
-    MSG_INSTALLING="Installing MTProxy (GetPageSpeed fork)..."
-    MSG_DEPS="Installing build dependencies..."
-    MSG_NO_APT="apt not found. This script currently supports Debian/Ubuntu (apt)."
-    MSG_DEPS_MANUAL="Install dependencies manually: git curl build-essential libssl-dev zlib1g-dev xxd."
-    MSG_CLONING="Cloning GetPageSpeed/MTProxy repository..."
-    MSG_SRC_EXISTS="Source directory exists, pulling latest changes..."
-    MSG_BUILDING="Building MTProxy (this may take a minute)..."
-    MSG_BUILD_OK="Build successful!"
-    MSG_BUILD_FAIL="Build failed! Check build dependencies."
+    MSG_INSTALLING="Installing Teleproxy..."
+    MSG_DEPS="Installing dependencies..."
+    MSG_NO_APT="apt not found. Install curl and xxd manually."
+    MSG_DEPS_MANUAL="Install: curl, xxd."
+    MSG_DOWNLOADING="Downloading Teleproxy binary..."
+    MSG_DOWNLOAD_FAIL="Installation failed! Check your OS architecture and network."
     MSG_BIN_INSTALLED="Binary installed to"
-    MSG_DL_CONFIG="Downloading Telegram proxy configuration..."
-    MSG_DL_FAIL_SECRET="Failed to download proxy-secret"
-    MSG_DL_FAIL_CONFIG="Failed to download proxy-multi.conf"
-    MSG_DL_OK="Telegram configuration downloaded"
     MSG_SECRET_EXISTING="Using existing secret:"
     MSG_SECRET_NEW="Generated new secret:"
     MSG_GET_IP="Getting external IPv4 address..."
     MSG_IP_FAIL="Failed to detect external IPv4 address"
     MSG_IP_MANUAL="Please manually check your IPv4 with: curl -4 ifconfig.me"
     MSG_IP_OK="Detected external IPv4:"
-    MSG_DOMAIN_TITLE="🌐 Domain Setup (Optional):"
-    MSG_DOMAIN_DESC="You can use a domain name instead of IP address."
+    MSG_DOMAIN_TITLE="🌐 Server Domain Setup (Optional):"
+    MSG_DOMAIN_DESC="You can use a domain name instead of IP address for links."
     MSG_DOMAIN_EXAMPLES="Examples: proxy.example.com, vpn.mydomain.org"
     MSG_DOMAIN_EMPTY="Leave empty to use IP address:"
-    MSG_DOMAIN_PROMPT="Enter domain name (optional): "
+    MSG_DOMAIN_PROMPT="Enter server domain name (optional): "
     MSG_DOMAIN_USING="Using domain:"
-    MSG_DOMAIN_DNS="Checking DNS for domain..."
-    MSG_DOMAIN_WARN="DNS doesn't match detected external IP."
-    MSG_DOMAIN_ARECORD="Make sure your domain A-record points to"
-    MSG_DOMAIN_DNS_OK="DNS looks ok."
     MSG_DOMAIN_INVALID="Invalid domain format. Using IP address instead."
     MSG_DOMAIN_IP="Using IP address:"
-    MSG_TLS_TITLE="🔒 TLS Domain Setup:"
-    MSG_TLS_DESC="MTProxy uses a domain for TLS certificate masking to avoid detection."
-    MSG_TLS_DESC2="Using random existing domains is more secure than default google.com"
-    MSG_TLS_EXAMPLES="Examples: github.com, cloudflare.com, microsoft.com"
+    MSG_TLS_TITLE="🔒 TLS Domain Setup (Fake-TLS):"
+    MSG_TLS_DESC="Teleproxy uses a domain for TLS certificate masking to avoid DPI detection."
+    MSG_TLS_EXAMPLES="Examples: cloudflare.com, github.com, microsoft.com"
     MSG_TLS_PROMPT="Enter TLS domain for masking (default"
-    MSG_TLS_CHECK="Checking TLS 1.3 support for"
-    MSG_TLS_OK="✅ supports TLS 1.3"
-    MSG_TLS_FAIL="⚠️  does NOT appear to support TLS 1.3"
-    MSG_TLS_REQUIRED="MTProxy EE mode requires a domain with TLS 1.3 + x25519 support."
-    MSG_TLS_OPT1="1 - Enter a different domain"
-    MSG_TLS_OPT2="2 - Continue anyway (connection may not work)"
-    MSG_TLS_CHOICE="Your choice [1/2]: "
-    MSG_TLS_CONTINUE="Continuing with"
-    MSG_TLS_PROMPT2="Enter TLS domain for masking: "
-    MSG_TLS_NO_OPENSSL="⚠️  openssl not found, skipping TLS 1.3 check"
     MSG_TLS_USING="Using TLS domain:"
-    MSG_NAT_CHECK="Checking NAT configuration..."
-    MSG_NAT_YES="NAT detected: (will use --nat-info)"
-    MSG_NAT_NO="No NAT detected (direct connection)"
-    MSG_WORKERS="Using 1 worker (recommended for TLS transport)"
+    MSG_WORKERS="Using 1 worker (default)"
     MSG_SERVICE_CREATE="Creating systemd service..."
     MSG_UFW_OPEN="UFW: Opened port"
-    MSG_CRON_CREATE="Creating daily config update cron job..."
-    MSG_CRON_OK="Cron job created:"
-    MSG_UTIL_CREATE="Creating management utility..."
-    MSG_SVC_RUNNING="✅ MTProxy service is running!"
+    MSG_UTIL_CREATE="Creating management utility teleproxy-ctl..."
+    MSG_SVC_RUNNING="✅ Teleproxy service is running!"
     MSG_SVC_FAIL="❌ Service failed to start"
     MSG_COMPLETE="🎉 Installation Complete!"
     MSG_QUICK="📋 Quick Commands:"
@@ -229,13 +174,12 @@ else
     MSG_QUICK2="Restart service"
     MSG_QUICK3="Show connection links"
     MSG_QUICK4="Show proxy statistics"
-    MSG_QUICK5="Update Telegram config"
     MSG_QUICK6="Show all commands"
     MSG_SAVED="📄 Configuration saved to:"
     MSG_UTIL_PATH="🔧 Management utility:"
     MSG_AUTOSTART="🔄 Service will auto-start on boot"
-    MSG_STATS_INFO="📊 Statistics:"
-    MSG_REMOVE_LATER="💡 To completely remove MTProxy later:"
+    MSG_STATS_INFO="📊 QR Codes mapping & Statistics:"
+    MSG_REMOVE_LATER="💡 To completely remove later:"
 fi
 }
 set_messages "$LANG_SEL"
@@ -270,27 +214,21 @@ if [[ "$1" == "uninstall" ]]; then
     
     echo -e "\n${YELLOW}$MSG_REMOVING${NC}"
     
-    # Read configuration BEFORE deleting anything
     UNINSTALL_PORT=""
-    if [[ -f "/etc/systemd/system/mtproxy.service" ]]; then
-        UNINSTALL_PORT=$(grep "ExecStart=" /etc/systemd/system/mtproxy.service | grep -oP '(?<=-H )\S+')
-    fi
-    if [[ -z "$UNINSTALL_PORT" && -f "/opt/MTProxy/info.txt" ]]; then
-        UNINSTALL_PORT=$(grep "Selected Port:" /opt/MTProxy/info.txt 2>/dev/null | awk '{print $3}')
+    if [[ -f "/etc/teleproxy/config.toml" ]]; then
+        UNINSTALL_PORT=$(grep "port =" /etc/teleproxy/config.toml | awk '{print $3}')
     fi
     
-    # Stop and disable service
-    if systemctl is-active --quiet mtproxy; then
+    if systemctl is-active --quiet teleproxy; then
         echo -e "${YELLOW}$MSG_STOPPING${NC}"
-        systemctl stop mtproxy
+        systemctl stop teleproxy
     fi
     
-    if systemctl is-enabled --quiet mtproxy 2>/dev/null; then
+    if systemctl is-enabled --quiet teleproxy 2>/dev/null; then
         echo -e "${YELLOW}$MSG_DISABLING${NC}"
-        systemctl disable mtproxy
+        systemctl disable teleproxy
     fi
     
-    # Remove firewall rule for the actual configured port
     if [[ -n "$UNINSTALL_PORT" ]]; then
         if command -v ufw &> /dev/null && ufw status | grep -q "Status: active"; then
             if ufw status | grep -q "${UNINSTALL_PORT}/tcp"; then
@@ -300,29 +238,28 @@ if [[ "$1" == "uninstall" ]]; then
         fi
     fi
     
-    # Remove service file
-    if [[ -f "/etc/systemd/system/mtproxy.service" ]]; then
+    if [[ -f "/etc/systemd/system/teleproxy.service" ]]; then
         echo -e "${YELLOW}$MSG_RM_SERVICE${NC}"
-        rm -f "/etc/systemd/system/mtproxy.service"
+        rm -f "/etc/systemd/system/teleproxy.service"
         systemctl daemon-reload
     fi
     
-    # Remove installation directory (binary, source, configs — everything)
-    if [[ -d "/opt/MTProxy" ]]; then
+    if [[ -d "/etc/teleproxy" ]]; then
         echo -e "${YELLOW}$MSG_RM_INSTALLDIR${NC}"
-        rm -rf "/opt/MTProxy"
+        rm -rf "/etc/teleproxy"
     fi
     
-    # Remove management utility
-    if [[ -f "/usr/local/bin/mtproxy" ]]; then
+    if [[ -f "/usr/local/bin/teleproxy" ]]; then
         echo -e "${YELLOW}$MSG_RM_UTILITY${NC}"
-        rm -f "/usr/local/bin/mtproxy"
+        rm -f "/usr/local/bin/teleproxy"
+        rm -f "/usr/local/bin/teleproxy-ctl"
+        rm -f "/usr/local/bin/teleproxy-updater"
+        rm -f "/etc/cron.d/teleproxy-updater"
     fi
     
-    # Remove cron job
-    if [[ -f "/etc/cron.daily/mtproxy-update-config" ]]; then
-        echo -e "${YELLOW}$MSG_RM_CRON${NC}"
-        rm -f "/etc/cron.daily/mtproxy-update-config"
+    if id "teleproxy" &>/dev/null; then
+        echo -e "${YELLOW}$MSG_RM_USER${NC}"
+        userdel teleproxy 2>/dev/null || true
     fi
     
     echo -e "\n${GREEN}$MSG_UNINSTALL_DONE${NC}"
@@ -331,7 +268,6 @@ if [[ "$1" == "uninstall" ]]; then
     exit 0
 fi
 
-# Check for help or invalid arguments
 if [[ "$1" == "help" || "$1" == "-h" || "$1" == "--help" ]]; then
     echo -e "${BLUE}$MSG_HELP_TITLE${NC}\n"
     echo "$MSG_HELP_USAGE"
@@ -350,10 +286,13 @@ if [[ -n "$1" && "$1" != "install" ]]; then
 fi
 
 # Configuration
-INSTALL_DIR="/opt/MTProxy"
-SERVICE_NAME="mtproxy"
+CONFIG_DIR="/etc/teleproxy"
+SERVICE_NAME="teleproxy"
+SERVICE_USER="teleproxy"
+BIN_FILE="/usr/local/bin/teleproxy"
 DEFAULT_PORT=443
-STATS_PORT=2398
+STATS_PORT=8888
+WORKERS=1
 
 # Get user input
 read -p "$MSG_PORT_PROMPT: $DEFAULT_PORT): " USER_PORT
@@ -361,70 +300,50 @@ PORT=${USER_PORT:-$DEFAULT_PORT}
 
 echo -e "\n${YELLOW}$MSG_INSTALLING${NC}"
 
-# Install dependencies
 echo -e "${YELLOW}$MSG_DEPS${NC}"
 if command -v apt >/dev/null 2>&1; then
     apt update -qq
-    apt install -y git curl build-essential libssl-dev zlib1g-dev xxd || apt install -y vim-common
+    apt install -y curl xxd jq vim-common
 else
-    echo -e "${RED}$MSG_NO_APT${NC}"
-    echo -e "${YELLOW}$MSG_DEPS_MANUAL${NC}"
+    if ! command -v curl >/dev/null 2>&1 || ! command -v xxd >/dev/null 2>&1; then
+        echo -e "${RED}$MSG_NO_APT${NC}"
+        echo -e "${YELLOW}$MSG_DEPS_MANUAL${NC}"
+        exit 1
+    fi
+fi
+
+mkdir -p "$CONFIG_DIR"
+
+systemctl stop teleproxy 2>/dev/null
+
+echo -e "${YELLOW}$MSG_DOWNLOADING${NC}"
+ARCH=$(uname -m)
+case "$ARCH" in
+    x86_64)  ARCH_SUFFIX="amd64" ;;
+    aarch64) ARCH_SUFFIX="arm64" ;;
+    *)       echo -e "${RED}Unsupported architecture: $ARCH${NC}"; exit 1 ;;
+esac
+
+GITHUB_REPO="teleproxy/teleproxy"
+URL="https://github.com/$GITHUB_REPO/releases/latest/download/teleproxy-linux-${ARCH_SUFFIX}"
+
+if ! curl -fsSL -o "$BIN_FILE.tmp" "$URL"; then
+    echo -e "${RED}$MSG_DOWNLOAD_FAIL${NC}"
     exit 1
 fi
+chmod +x "$BIN_FILE.tmp"
+mv "$BIN_FILE.tmp" "$BIN_FILE"
+echo "$URL" > "$CONFIG_DIR/installed_url"
+echo -e "${GREEN}$MSG_BIN_INSTALLED $BIN_FILE${NC}"
 
-# Create installation directory
-mkdir -p "$INSTALL_DIR"
-
-# Stop existing service if running
-systemctl stop mtproxy 2>/dev/null
-
-# Clone and build MTProxy
-echo -e "${YELLOW}$MSG_CLONING${NC}"
-if [[ -d "$INSTALL_DIR/src" ]]; then
-    echo -e "${YELLOW}$MSG_SRC_EXISTS${NC}"
-    cd "$INSTALL_DIR/src"
-    git pull
-else
-    git clone https://github.com/GetPageSpeed/MTProxy "$INSTALL_DIR/src"
-    cd "$INSTALL_DIR/src"
-fi
-
-echo -e "${YELLOW}$MSG_BUILDING${NC}"
-make clean 2>/dev/null
-if make; then
-    echo -e "${GREEN}$MSG_BUILD_OK${NC}"
-else
-    echo -e "${RED}$MSG_BUILD_FAIL${NC}"
-    exit 1
-fi
-
-# Copy binary
-cp "$INSTALL_DIR/src/objs/bin/mtproto-proxy" "$INSTALL_DIR/mtproto-proxy"
-chmod +x "$INSTALL_DIR/mtproto-proxy"
-echo -e "${GREEN}$MSG_BIN_INSTALLED $INSTALL_DIR/mtproto-proxy${NC}"
-
-# Download proxy-secret and proxy-multi.conf
-echo -e "${YELLOW}$MSG_DL_CONFIG${NC}"
-if ! curl -s https://core.telegram.org/getProxySecret -o "$INSTALL_DIR/proxy-secret"; then
-    echo -e "${RED}$MSG_DL_FAIL_SECRET${NC}"
-    exit 1
-fi
-if ! curl -s https://core.telegram.org/getProxyConfig -o "$INSTALL_DIR/proxy-multi.conf"; then
-    echo -e "${RED}$MSG_DL_FAIL_CONFIG${NC}"
-    exit 1
-fi
-echo -e "${GREEN}$MSG_DL_OK${NC}"
-
-# Generate user secret (or use existing one)
-if [[ -f "$INSTALL_DIR/info.txt" ]] && grep -q "Base Secret:" "$INSTALL_DIR/info.txt"; then
-    USER_SECRET=$(grep "Base Secret:" "$INSTALL_DIR/info.txt" | awk '{print $3}')
+if [[ -f "$CONFIG_DIR/config.toml" ]] && grep -q "key =" "$CONFIG_DIR/config.toml"; then
+    USER_SECRET=$(grep "key =" "$CONFIG_DIR/config.toml" | head -1 | cut -d'"' -f2)
     echo -e "${GREEN}$MSG_SECRET_EXISTING $USER_SECRET${NC}"
 else
-    USER_SECRET=$(head -c 16 /dev/urandom | xxd -ps)
+    USER_SECRET=$($BIN_FILE generate-secret 2>/dev/null || head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')
     echo -e "${GREEN}$MSG_SECRET_NEW $USER_SECRET${NC}"
 fi
 
-# Get external IP (IPv4 only)
 echo -e "${YELLOW}$MSG_GET_IP${NC}"
 EXTERNAL_IP=""
 for service in "ipv4.icanhazip.com" "ipv4.ident.me" "ifconfig.me/ip" "api.ipify.org"; do
@@ -454,7 +373,6 @@ else
     echo -e "${GREEN}$MSG_IP_OK $EXTERNAL_IP${NC}"
 fi
 
-# Ask for domain (optional)
 echo -e "\n${YELLOW}$MSG_DOMAIN_TITLE${NC}"
 echo -e "${CYAN}$MSG_DOMAIN_DESC${NC}"
 echo -e "${CYAN}$MSG_DOMAIN_EXAMPLES${NC}"
@@ -466,14 +384,6 @@ if [[ -n "$USER_DOMAIN" ]]; then
     if [[ $USER_DOMAIN =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
         PROXY_HOST="$USER_DOMAIN"
         echo -e "${GREEN}$MSG_DOMAIN_USING $PROXY_HOST${NC}"
-        echo -e "${YELLOW}$MSG_DOMAIN_DNS${NC}"
-        DOMAIN_IP=$(getent ahostsv4 "$PROXY_HOST" 2>/dev/null | awk '/STREAM/ {print $1; exit}')
-        if [[ -n "$DOMAIN_IP" && -n "$EXTERNAL_IP" && "$DOMAIN_IP" != "$EXTERNAL_IP" ]]; then
-            echo -e "${YELLOW}$MSG_DOMAIN_WARN${NC}"
-            echo -e "${YELLOW}$MSG_DOMAIN_ARECORD ${EXTERNAL_IP}.${NC}"
-        else
-            echo -e "${GREEN}$MSG_DOMAIN_DNS_OK${NC}"
-        fi
     else
         echo -e "${RED}$MSG_DOMAIN_INVALID${NC}"
         PROXY_HOST="$EXTERNAL_IP"
@@ -483,117 +393,73 @@ else
     echo -e "${GREEN}$MSG_DOMAIN_IP $PROXY_HOST${NC}"
 fi
 
-# TLS Domain setup for better security
 echo -e "\n${YELLOW}$MSG_TLS_TITLE${NC}"
 echo -e "${CYAN}$MSG_TLS_DESC${NC}"
-echo -e "${CYAN}$MSG_TLS_DESC2${NC}"
 echo -e "${CYAN}$MSG_TLS_EXAMPLES${NC}"
 echo ""
 
-# List of TLS 1.3 compatible domains (must support x25519 cipher)
-TLS_DOMAINS=("www.google.com" "www.cloudflare.com" "www.microsoft.com" "www.amazon.com" "www.instagram.com" "www.facebook.com")
+TLS_DOMAINS=("www.cloudflare.com" "www.microsoft.com" "www.apple.com" "www.samsung.com")
 RANDOM_DOMAIN=${TLS_DOMAINS[$RANDOM % ${#TLS_DOMAINS[@]}]}
 
 read -p "$MSG_TLS_PROMPT: $RANDOM_DOMAIN): " USER_TLS_DOMAIN
 TLS_DOMAIN=${USER_TLS_DOMAIN:-$RANDOM_DOMAIN}
-
-# Verify TLS 1.3 support
-while true; do
-    echo -e "${YELLOW}$MSG_TLS_CHECK $TLS_DOMAIN...${NC}"
-    if command -v openssl >/dev/null 2>&1; then
-        TLS_CHECK=$(echo | openssl s_client -connect "$TLS_DOMAIN:443" -tls1_3 2>&1)
-        if echo "$TLS_CHECK" | grep -qi "TLSv1.3\|tls1.3"; then
-            echo -e "${GREEN}$TLS_DOMAIN $MSG_TLS_OK${NC}"
-            break
-        else
-            echo -e "${RED}$TLS_DOMAIN $MSG_TLS_FAIL${NC}"
-            echo -e "${YELLOW}$MSG_TLS_REQUIRED${NC}"
-            echo ""
-            echo -e "${CYAN}Options:${NC}"
-            echo -e "  ${GREEN}$MSG_TLS_OPT1${NC}"
-            echo -e "  ${GREEN}$MSG_TLS_OPT2${NC}"
-            read -p "$MSG_TLS_CHOICE" TLS_CHOICE
-            if [[ "$TLS_CHOICE" == "2" ]]; then
-                echo -e "${YELLOW}$MSG_TLS_CONTINUE $TLS_DOMAIN...${NC}"
-                break
-            else
-                read -p "$MSG_TLS_PROMPT2" TLS_DOMAIN
-                [[ -z "$TLS_DOMAIN" ]] && TLS_DOMAIN="$RANDOM_DOMAIN"
-            fi
-        fi
-    else
-        echo -e "${YELLOW}$MSG_TLS_NO_OPENSSL${NC}"
-        break
-    fi
-done
-
 echo -e "${GREEN}$MSG_TLS_USING $TLS_DOMAIN${NC}"
 
-# NAT detection: compare internal IP with external IP
-echo -e "${YELLOW}$MSG_NAT_CHECK${NC}"
-INTERNAL_IP=$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K\S+' || hostname -I 2>/dev/null | awk '{print $1}')
-NAT_INFO=""
-if [[ -n "$INTERNAL_IP" && -n "$EXTERNAL_IP" && "$INTERNAL_IP" != "$EXTERNAL_IP" && "$EXTERNAL_IP" != "YOUR_SERVER_IP" ]]; then
-    NAT_INFO="--nat-info ${INTERNAL_IP}:${EXTERNAL_IP}"
-    echo -e "${GREEN}$MSG_NAT_YES $INTERNAL_IP -> $EXTERNAL_IP${NC}"
-else
-    echo -e "${GREEN}$MSG_NAT_NO${NC}"
+if ! id "$SERVICE_USER" >/dev/null 2>&1; then
+    useradd --system --no-create-home --shell /usr/sbin/nologin "$SERVICE_USER"
 fi
 
-# Workers: use 1 worker with TLS transport (recommended by upstream)
-WORKERS=1
-echo -e "${GREEN}$MSG_WORKERS${NC}"
+cat > "$CONFIG_DIR/config.toml" << EOL
+# Teleproxy configuration
+# Edit and run: systemctl reload teleproxy
+port = $PORT
+stats_port = $STATS_PORT
+http_stats = true
+user = "$SERVICE_USER"
+direct = true
+workers = $WORKERS
+domain = "$TLS_DOMAIN"
 
-# Create initial info.txt with setup details
-mkdir -p "$INSTALL_DIR"
-cat > "$INSTALL_DIR/info.txt" << EOL
-MTProxy Setup Information
-========================
-Setup Date: $(date)
-Selected Port: $PORT
-External IPv4: $EXTERNAL_IP
-Internal IP: ${INTERNAL_IP:-N/A}
-NAT: ${NAT_INFO:-No}
-Proxy Host: $PROXY_HOST
-TLS Domain: $TLS_DOMAIN
-Base Secret: $USER_SECRET
-Workers: $WORKERS
-Status: Installing...
+[[secret]]
+key = "$USER_SECRET"
+# label = "default"
 EOL
 
-# Create systemd service
+chown root:"$SERVICE_USER" "$CONFIG_DIR/config.toml"
+chmod 640 "$CONFIG_DIR/config.toml"
+
+cat > "$CONFIG_DIR/info.txt" << EOL
+External IP: $EXTERNAL_IP
+Proxy Host: $PROXY_HOST
+EOL
+
 echo -e "${YELLOW}$MSG_SERVICE_CREATE${NC}"
 cat > "/etc/systemd/system/$SERVICE_NAME.service" << EOL
 [Unit]
-Description=MTProxy Telegram Proxy (GetPageSpeed)
-After=network.target
-Wants=network-online.target
+Description=Teleproxy MTProto Proxy
 After=network-online.target
-StartLimitBurst=3
-StartLimitIntervalSec=60
+Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=$INSTALL_DIR
-ExecStart=$INSTALL_DIR/mtproto-proxy -u nobody -p $STATS_PORT -H $PORT -S $USER_SECRET -D $TLS_DOMAIN $NAT_INFO --http-stats --aes-pwd $INSTALL_DIR/proxy-secret $INSTALL_DIR/proxy-multi.conf -M $WORKERS
-Restart=always
-RestartSec=10
-KillMode=mixed
-KillSignal=SIGTERM
-TimeoutStopSec=30
-
-# Resource limits for stability
+User=$SERVICE_USER
+ExecStart=$BIN_FILE --config $CONFIG_DIR/config.toml
+ExecReload=/bin/kill -HUP \$MAINPID
+Restart=on-failure
+RestartSec=5
 LimitNOFILE=65536
-LimitNPROC=4096
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=$CONFIG_DIR
 
 [Install]
 WantedBy=multi-user.target
 EOL
 
-# Set permissions
-chown -R root:root "$INSTALL_DIR"
+chown -R root:root "$CONFIG_DIR/info.txt"
 
-# Configure firewall
 if command -v ufw &> /dev/null; then
     if ufw status | grep -q "Status: active"; then
         ufw allow $PORT/tcp
@@ -601,20 +467,42 @@ if command -v ufw &> /dev/null; then
     fi
 fi
 
-# Create cron job for daily proxy-multi.conf update
-echo -e "${YELLOW}$MSG_CRON_CREATE${NC}"
-cat > "/etc/cron.daily/mtproxy-update-config" << 'CRON_EOF'
+echo -e "${YELLOW}Создание автоматического обновления (cron)...${NC}"
+cat > "/usr/local/bin/teleproxy-updater" << 'UPDATER_EOF'
 #!/bin/bash
-# Update MTProxy Telegram configuration daily
-curl -s https://core.telegram.org/getProxyConfig -o /opt/MTProxy/proxy-multi.conf 2>/dev/null
-CRON_EOF
-chmod +x "/etc/cron.daily/mtproxy-update-config"
-echo -e "${GREEN}$MSG_CRON_OK /etc/cron.daily/mtproxy-update-config${NC}"
+ARCH=$(uname -m)
+case "$ARCH" in
+    x86_64)  ARCH_SUFFIX="amd64" ;;
+    aarch64) ARCH_SUFFIX="arm64" ;;
+    *)       exit 1 ;;
+esac
 
-# Create management utility
+LATEST_URL=$(curl -Ls -o /dev/null -w %{url_effective} "https://github.com/teleproxy/teleproxy/releases/latest/download/teleproxy-linux-${ARCH_SUFFIX}")
+if [[ -z "$LATEST_URL" ]]; then exit 1; fi
+
+CURRENT_URL=""
+[[ -f "/etc/teleproxy/installed_url" ]] && CURRENT_URL=$(cat "/etc/teleproxy/installed_url")
+
+if [[ "$LATEST_URL" != "$CURRENT_URL" ]]; then
+    if curl -fsSL -o "/tmp/teleproxy.new" "$LATEST_URL"; then
+        chmod +x "/tmp/teleproxy.new"
+        systemctl stop teleproxy
+        mv "/tmp/teleproxy.new" "/usr/local/bin/teleproxy"
+        systemctl start teleproxy
+        echo "$LATEST_URL" > "/etc/teleproxy/installed_url"
+    fi
+fi
+UPDATER_EOF
+chmod +x "/usr/local/bin/teleproxy-updater"
+
+cat > "/etc/cron.d/teleproxy-updater" << 'CRON_EOF'
+30 4 */3 * * root /usr/local/bin/teleproxy-updater
+CRON_EOF
+chmod 644 "/etc/cron.d/teleproxy-updater"
+
 echo -e "${YELLOW}$MSG_UTIL_CREATE${NC}"
 
-cat > "/tmp/mtproxy_utility" << 'UTILITY_EOF'
+cat > "/tmp/teleproxy_utility" << 'UTILITY_EOF'
 #!/bin/bash
 
 RED='\033[0;31m'
@@ -625,136 +513,94 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-INSTALL_DIR="/opt/MTProxy"
-SERVICE_NAME="mtproxy"
+CONFIG_DIR="/etc/teleproxy"
+SERVICE_NAME="teleproxy"
+BIN_FILE="/usr/local/bin/teleproxy"
 
-# Load language
 LANG_SEL="en"
-[[ -f "$INSTALL_DIR/lang" ]] && LANG_SEL=$(cat "$INSTALL_DIR/lang")
+[[ -f "$CONFIG_DIR/lang" ]] && LANG_SEL=$(cat "$CONFIG_DIR/lang")
 
 if [[ "$LANG_SEL" == "ru" ]]; then
-    U_HELP_TITLE="Утилита управления MTProxy"
-    U_HELP_USAGE="Использование: mtproxy [команда]"
+    U_HELP_TITLE="Утилита управления Teleproxy"
+    U_HELP_USAGE="Использование: teleproxy-ctl [команда]"
     U_HELP_COMMANDS="Команды:"
     U_STATUS="Статус"
     U_STATUS_LINKS="Показать статус и ссылки"
-    U_START="Запустить сервис MTProxy"
-    U_STOP="Остановить сервис MTProxy"
-    U_RESTART="Перезапустить сервис MTProxy"
+    U_START="Запустить сервис Teleproxy"
+    U_STOP="Остановить сервис Teleproxy"
+    U_RESTART="Перезапустить сервис Teleproxy"
+    U_RELOAD="Перезагрузить конфигурацию (без остановки)"
+    U_UPDATE="Проверить и установить обновления"
     U_LOGS="Показать логи сервиса"
     U_LINKS="Показать только ссылки"
     U_INFO="Детальная информация"
     U_STATS_CMD="Статистика прокси"
-    U_TEST_CMD="Тест подключения"
-    U_UPDATE_CMD="Обновить proxy-multi.conf"
     U_HELP_CMD="Показать справку"
     U_SVC_RUNNING="✅ Сервис: Работает"
     U_SVC_STOPPED="❌ Сервис: Остановлен"
     U_CONFIG="📊 Конфигурация:"
     U_PORT="Порт"
     U_SECRET="Секрет"
-    U_REG_SECRET="Секрет регистрации (plain для @MTProxybot)"
     U_TLS_DOMAIN="TLS домен"
     U_PROXY_HOST="Хост прокси"
     U_CONN_LINKS="🔗 Ссылки подключения:"
-    U_WEB_LINKS="🌐 Веб-ссылки:"
     U_NO_LINKS="❌ Нет доступных ссылок"
-    U_NO_ACTIVE="❌ Нет активных ссылок. Сервис запущен?"
-    U_DETAIL_TITLE="=== Детальная информация MTProxy ==="
+    U_DETAIL_TITLE="=== Детальная информация Teleproxy ==="
     U_CONFIG_FILE="📄 Файл конфигурации:"
     U_MGMT_CMDS="🛠️  Команды управления:"
     U_FETCHING="📊 Получение статистики с порта"
     U_FETCH_FAIL="❌ Не удалось получить статистику. Сервис запущен?"
-    U_UPDATING="Обновление proxy-multi.conf с Telegram..."
-    U_UPDATE_OK="✅ proxy-multi.conf обновлён"
     U_RESTARTING="Перезапуск сервиса..."
     U_RESTART_OK="✅ Сервис перезапущен"
-    U_RESTART_FAIL="❌ Не удалось перезапустить"
-    U_DL_FAIL="❌ Не удалось загрузить proxy-multi.conf"
-    U_STARTING="Запуск сервиса MTProxy..."
+    U_STARTING="Запуск сервиса Teleproxy..."
     U_START_OK="✅ Сервис запущен"
-    U_START_FAIL="❌ Не удалось запустить"
-    U_STOPPING="Остановка сервиса MTProxy..."
+    U_STOPPING="Остановка сервиса Teleproxy..."
     U_STOP_OK="✅ Сервис остановлен"
-    U_TESTING="Тестирование подключения MTProxy..."
-    U_PORT_TEST="Тестирование порта"
-    U_PORT_OPEN="✅ Порт открыт локально"
-    U_PORT_CLOSED="❌ Порт недоступен локально"
-    U_NO_NC="⚠️  nc/telnet недоступны"
-    U_LISTENING="✅ Сервис слушает на порту"
-    U_NOT_LISTENING="❌ Ничего не слушает на порту"
-    U_STATS_OK="✅ Эндпоинт статистики отвечает"
-    U_STATS_FAIL="⚠️  Эндпоинт статистики не отвечает"
-    U_RECENT_ERR="Недавние ошибки в логах:"
-    U_NO_ERRORS="✅ Нет недавних ошибок"
-    U_NO_PORT="❌ Не удалось определить порт"
+    U_RELOADING="Перезагрузка конфигурации..."
+    U_RELOAD_OK="✅ Конфигурация перезагружена"
     U_UNKNOWN="Неизвестная команда:"
-    U_SHOWING_LOGS="Логи MTProxy (Ctrl+C для выхода):"
+    U_SHOWING_LOGS="Логи Teleproxy (Ctrl+C для выхода):"
 else
-    U_HELP_TITLE="MTProxy Management Utility"
-    U_HELP_USAGE="Usage: mtproxy [command]"
+    U_HELP_TITLE="Teleproxy Management Utility"
+    U_HELP_USAGE="Usage: teleproxy-ctl [command]"
     U_HELP_COMMANDS="Commands:"
     U_STATUS="Status"
     U_STATUS_LINKS="Show service status and connection links"
-    U_START="Start MTProxy service"
-    U_STOP="Stop MTProxy service"
-    U_RESTART="Restart MTProxy service"
+    U_START="Start Teleproxy service"
+    U_STOP="Stop Teleproxy service"
+    U_RESTART="Restart Teleproxy service"
+    U_RELOAD="Reload configuration cleanly"
+    U_UPDATE="Check and install updates"
     U_LOGS="Show service logs"
     U_LINKS="Show connection links only"
     U_INFO="Show detailed configuration"
     U_STATS_CMD="Show proxy statistics"
-    U_TEST_CMD="Test proxy connectivity"
-    U_UPDATE_CMD="Update proxy-multi.conf from Telegram"
     U_HELP_CMD="Show this help"
     U_SVC_RUNNING="✅ Service: Running"
     U_SVC_STOPPED="❌ Service: Stopped"
     U_CONFIG="📊 Configuration:"
     U_PORT="Port"
     U_SECRET="Secret"
-    U_REG_SECRET="Registration Secret (plain for @MTProxybot)"
     U_TLS_DOMAIN="TLS Domain"
     U_PROXY_HOST="Proxy Host"
     U_CONN_LINKS="🔗 Connection Links:"
-    U_WEB_LINKS="🌐 Web Links:"
     U_NO_LINKS="❌ No links available"
-    U_NO_ACTIVE="❌ No active links found. Is service running?"
-    U_DETAIL_TITLE="=== MTProxy Detailed Information ==="
+    U_DETAIL_TITLE="=== Teleproxy Detailed Information ==="
     U_CONFIG_FILE="📄 Configuration File:"
     U_MGMT_CMDS="🛠️  Management Commands:"
     U_FETCHING="📊 Fetching proxy statistics from port"
     U_FETCH_FAIL="❌ Could not fetch stats. Is the service running?"
-    U_UPDATING="Updating proxy-multi.conf from Telegram..."
-    U_UPDATE_OK="✅ proxy-multi.conf updated successfully"
-    U_RESTARTING="Restarting service to apply changes..."
+    U_RESTARTING="Restarting service..."
     U_RESTART_OK="✅ Service restarted successfully"
-    U_RESTART_FAIL="❌ Failed to restart service"
-    U_DL_FAIL="❌ Failed to download proxy-multi.conf"
-    U_STARTING="Starting MTProxy service..."
+    U_STARTING="Starting Teleproxy service..."
     U_START_OK="✅ Service started successfully"
-    U_START_FAIL="❌ Failed to start service"
-    U_STOPPING="Stopping MTProxy service..."
+    U_STOPPING="Stopping Teleproxy service..."
     U_STOP_OK="✅ Service stopped"
-    U_TESTING="Testing MTProxy connectivity..."
-    U_PORT_TEST="Testing port"
-    U_PORT_OPEN="✅ Port is open locally"
-    U_PORT_CLOSED="❌ Port is not accessible locally"
-    U_NO_NC="⚠️  nc/telnet not available for port testing"
-    U_LISTENING="✅ Service is listening on port"
-    U_NOT_LISTENING="❌ No service listening on port"
-    U_STATS_OK="✅ Statistics endpoint is responding"
-    U_STATS_FAIL="⚠️  Statistics endpoint not responding"
-    U_RECENT_ERR="Recent errors in logs:"
-    U_NO_ERRORS="✅ No recent errors in logs"
-    U_NO_PORT="❌ Cannot determine port from service config"
+    U_RELOADING="Reloading configuration..."
+    U_RELOAD_OK="✅ Configuration reloaded successfully"
     U_UNKNOWN="Unknown command:"
-    U_SHOWING_LOGS="Showing MTProxy logs (Ctrl+C to exit):"
+    U_SHOWING_LOGS="Showing Teleproxy logs (Ctrl+C to exit):"
 fi
-
-# Function to convert domain to hex for TLS link
-domain_to_hex() {
-    local domain="$1"
-    echo -n "$domain" | xxd -p | tr -d '\n'
-}
 
 show_help() {
     echo -e "${BLUE}$U_HELP_TITLE${NC}\n"
@@ -765,85 +611,45 @@ show_help() {
     echo -e "  ${GREEN}start${NC}     - $U_START"
     echo -e "  ${GREEN}stop${NC}      - $U_STOP"
     echo -e "  ${GREEN}restart${NC}   - $U_RESTART"
+    echo -e "  ${GREEN}reload${NC}    - $U_RELOAD"
+    echo -e "  ${GREEN}update${NC}    - $U_UPDATE"
     echo -e "  ${GREEN}logs${NC}      - $U_LOGS"
     echo -e "  ${GREEN}links${NC}     - $U_LINKS"
     echo -e "  ${GREEN}info${NC}      - $U_INFO"
     echo -e "  ${GREEN}stats${NC}     - $U_STATS_CMD"
-    echo -e "  ${GREEN}test${NC}      - $U_TEST_CMD"
-    echo -e "  ${GREEN}update${NC}    - $U_UPDATE_CMD"
     echo -e "  ${GREEN}help${NC}      - $U_HELP_CMD"
 }
 
-get_service_config() {
-    if [[ -f "/etc/systemd/system/$SERVICE_NAME.service" ]]; then
-        EXEC_START=$(grep "ExecStart=" "/etc/systemd/system/$SERVICE_NAME.service" | cut -d'=' -f2-)
-
-        # Extract port from -H flag
-        PORT=$(echo "$EXEC_START" | grep -oP '(?<=-H )\S+')
-
-        # Extract secret from -S flag
-        SECRET=$(echo "$EXEC_START" | grep -oP '(?<=-S )\S+')
-
-        # Extract TLS domain from -D flag
-        TLS_DOMAIN=$(echo "$EXEC_START" | grep -oP '(?<=-D )\S+')
-
-        # Extract stats port from -p flag
-        STATS_PORT=$(echo "$EXEC_START" | grep -oP '(?<=-p )\S+')
-    fi
+get_config_vars() {
+    PORT=$(grep "^port = " $CONFIG_DIR/config.toml | awk '{print $3}')
+    STATS_PORT=$(grep "^stats_port = " $CONFIG_DIR/config.toml | awk '{print $3}')
+    TLS_DOMAIN=$(grep "^domain = " $CONFIG_DIR/config.toml | cut -d'"' -f2 || true)
+    SECRET=$(grep "^key = " $CONFIG_DIR/config.toml | cut -d'"' -f2 || true)
+    PROXY_HOST=$(grep "Proxy Host:" $CONFIG_DIR/info.txt 2>/dev/null | awk '{print $3}')
+    if [[ -z "$PROXY_HOST" ]]; then PROXY_HOST="127.0.0.1"; fi
 }
 
-get_proxy_host() {
-    # Get the proxy host: prefer domain from info.txt, fallback to IP detection
-    PROXY_HOST=""
-
-    if [[ -f "$INSTALL_DIR/info.txt" ]]; then
-        PROXY_HOST=$(grep "Proxy Host:" "$INSTALL_DIR/info.txt" 2>/dev/null | awk '{print $3}')
-    fi
-
-    if [[ -z "$PROXY_HOST" ]]; then
-        for service in "ipv4.icanhazip.com" "ipv4.ident.me" "ifconfig.me/ip" "api.ipify.org"; do
-            if DETECTED_IP=$(curl -4 -s --connect-timeout 5 "$service" 2>/dev/null) && [[ -n "$DETECTED_IP" ]]; then
-                if [[ $DETECTED_IP =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-                    IFS='.' read -ra ADDR <<< "$DETECTED_IP"
-                    valid=true
-                    for i in "${ADDR[@]}"; do
-                        if [[ $i -gt 255 || $i -lt 0 ]]; then
-                            valid=false
-                            break
-                        fi
-                    done
-                    if [[ $valid == true ]]; then
-                        PROXY_HOST="$DETECTED_IP"
-                        break
-                    fi
-                fi
-            fi
-        done
-    fi
-
-    if [[ -z "$PROXY_HOST" ]]; then
-        PROXY_HOST="YOUR_SERVER_IP"
-    fi
-}
-
-generate_links() {
-    get_service_config
-    get_proxy_host
-
+show_links() {
+    get_config_vars
     if [[ -n "$PORT" && -n "$SECRET" ]]; then
-        # Get TLS domain
-        [[ -z "$TLS_DOMAIN" ]] && TLS_DOMAIN="github.com"
-        TLS_DOMAIN_HEX=$(domain_to_hex "$TLS_DOMAIN")
-
-        # Generate all link types
-        PLAIN_LINK="tg://proxy?server=$PROXY_HOST&port=$PORT&secret=${SECRET}"
-        DD_LINK="tg://proxy?server=$PROXY_HOST&port=$PORT&secret=dd${SECRET}"
-        EE_LINK="tg://proxy?server=$PROXY_HOST&port=$PORT&secret=ee${SECRET}${TLS_DOMAIN_HEX}"
+        echo -e "${YELLOW}$U_CONN_LINKS${NC}"
+        domain_hex=""
+        if [[ -n "$TLS_DOMAIN" ]]; then
+            domain_hex=$(echo -n "$TLS_DOMAIN" | xxd -p | tr -d '\n')
+            full_secret="ee${SECRET}${domain_hex}"
+        else
+            full_secret="$SECRET"
+        fi
+        
+        $BIN_FILE link --server "$PROXY_HOST" --port "$PORT" --secret "$full_secret"
+    else
+        echo -e "${RED}$U_NO_LINKS${NC}"
+        return 1
     fi
 }
 
 show_status() {
-    echo -e "${BLUE}=== MTProxy $U_STATUS ===${NC}\n"
+    echo -e "${BLUE}=== Teleproxy $U_STATUS ===${NC}\n"
 
     if systemctl is-active --quiet $SERVICE_NAME; then
         echo -e "${GREEN}$U_SVC_RUNNING${NC}"
@@ -852,68 +658,37 @@ show_status() {
         return 1
     fi
 
-    get_service_config
-    get_proxy_host
+    get_config_vars
     echo -e "${YELLOW}$U_CONFIG${NC}"
     echo -e "   $U_PORT: ${GREEN}${PORT:-unknown}${NC}"
     echo -e "   $U_SECRET: ${GREEN}${SECRET:-unknown}${NC}"
-    echo -e "   $U_REG_SECRET: ${GREEN}${SECRET:-unknown}${NC}"
-    echo -e "   $U_TLS_DOMAIN: ${GREEN}${TLS_DOMAIN:-unknown}${NC}"
+    echo -e "   $U_TLS_DOMAIN: ${GREEN}${TLS_DOMAIN:-none}${NC}"
     echo -e "   $U_PROXY_HOST: ${GREEN}${PROXY_HOST:-unknown}${NC}"
 
-    generate_links
-    if [[ -n "$PLAIN_LINK" || -n "$DD_LINK" || -n "$EE_LINK" ]]; then
-        echo -e "\n${YELLOW}$U_CONN_LINKS${NC}"
-        [[ -n "$PLAIN_LINK" ]] && echo -e "${GREEN}Plain (for @MTProxybot):${NC} $PLAIN_LINK"
-        [[ -n "$DD_LINK" ]] && echo -e "${GREEN}DD (legacy clients):${NC} $DD_LINK"
-        [[ -n "$EE_LINK" ]] && echo -e "${GREEN}TLS:${NC}      $EE_LINK"
-
-        echo -e "\n${YELLOW}$U_WEB_LINKS${NC}"
-        [[ -n "$PLAIN_LINK" ]] && echo -e "${GREEN}Plain:${NC} $(echo "$PLAIN_LINK" | sed 's|tg://|https://t.me/|')"
-        [[ -n "$DD_LINK" ]] && echo -e "${GREEN}DD:${NC} $(echo "$DD_LINK" | sed 's|tg://|https://t.me/|')"
-        [[ -n "$EE_LINK" ]] && echo -e "${GREEN}TLS:${NC}      $(echo "$EE_LINK" | sed 's|tg://|https://t.me/|')"
-    else
-        echo -e "\n${RED}$U_NO_LINKS${NC}"
-    fi
-}
-
-show_links() {
-    generate_links
-    if [[ -n "$PLAIN_LINK" || -n "$DD_LINK" || -n "$EE_LINK" ]]; then
-        echo -e "${YELLOW}$U_CONN_LINKS${NC}"
-        [[ -n "$PLAIN_LINK" ]] && echo "$PLAIN_LINK"
-        [[ -n "$DD_LINK" ]] && echo "$DD_LINK"
-        [[ -n "$EE_LINK" ]] && echo "$EE_LINK"
-    else
-        echo -e "${RED}$U_NO_ACTIVE${NC}"
-        return 1
-    fi
+    echo ""
+    show_links
 }
 
 show_info() {
     echo -e "${BLUE}$U_DETAIL_TITLE${NC}\n"
-
-    # Service status
     show_status
 
-    # Show info file if exists
-    if [[ -f "$INSTALL_DIR/info.txt" ]]; then
+    if [[ -f "$CONFIG_DIR/config.toml" ]]; then
         echo -e "\n${YELLOW}$U_CONFIG_FILE${NC}"
-        cat "$INSTALL_DIR/info.txt"
+        cat "$CONFIG_DIR/config.toml"
     fi
 
     echo -e "\n${YELLOW}$U_MGMT_CMDS${NC}"
-    echo -e "${GREEN}mtproxy status${NC}    - $U_STATUS_LINKS"
-    echo -e "${GREEN}mtproxy restart${NC}   - $U_RESTART"
-    echo -e "${GREEN}mtproxy logs${NC}      - $U_LOGS"
-    echo -e "${GREEN}mtproxy stats${NC}     - $U_STATS_CMD"
+    echo -e "${GREEN}teleproxy-ctl status${NC}    - $U_STATUS_LINKS"
+    echo -e "${GREEN}teleproxy-ctl restart${NC}   - $U_RESTART"
+    echo -e "${GREEN}teleproxy-ctl logs${NC}      - $U_LOGS"
 }
 
 show_stats() {
-    get_service_config
-    local stats_port="${STATS_PORT:-2398}"
-    echo -e "${YELLOW}$U_FETCHING $stats_port...${NC}"
-    STATS=$(curl -s --connect-timeout 5 "http://localhost:$stats_port/stats" 2>/dev/null)
+    get_config_vars
+    local sp="${STATS_PORT:-8888}"
+    echo -e "${YELLOW}$U_FETCHING $sp...${NC}"
+    STATS=$(curl -s --connect-timeout 5 "http://localhost:$sp/metrics" 2>/dev/null | grep -v "^#")
     if [[ -n "$STATS" ]]; then
         echo -e "${GREEN}$STATS${NC}"
     else
@@ -921,96 +696,12 @@ show_stats() {
     fi
 }
 
-update_config() {
-    echo -e "${YELLOW}$U_UPDATING${NC}"
-    if curl -s https://core.telegram.org/getProxyConfig -o "$INSTALL_DIR/proxy-multi.conf"; then
-        echo -e "${GREEN}$U_UPDATE_OK${NC}"
-        echo -e "${YELLOW}$U_RESTARTING${NC}"
-        systemctl restart $SERVICE_NAME
-        sleep 2
-        if systemctl is-active --quiet $SERVICE_NAME; then
-            echo -e "${GREEN}$U_RESTART_OK${NC}"
-        else
-            echo -e "${RED}$U_RESTART_FAIL${NC}"
-        fi
-    else
-        echo -e "${RED}$U_DL_FAIL${NC}"
-    fi
-}
-
-update_info_file() {
-    get_service_config
-    get_proxy_host
-    generate_links
-
-    # Get external IP
-    EXTERNAL_IP=""
-    for service in "ipv4.icanhazip.com" "ipv4.ident.me"; do
-        if EXTERNAL_IP=$(curl -4 -s --connect-timeout 3 "$service" 2>/dev/null) && [[ $EXTERNAL_IP =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-            break
-        fi
-        EXTERNAL_IP=""
-    done
-
-    mkdir -p "$INSTALL_DIR"
-    cat > "$INSTALL_DIR/info.txt" << EOL
-MTProxy Configuration (GetPageSpeed Fork)
-==========================================
-Installation Date: $(date)
-Installation Path: $INSTALL_DIR
-Service Name: $SERVICE_NAME
-Proxy Type: GetPageSpeed/MTProxy (C binary)
-
-Connection Details:
-------------------
-Proxy Host: ${PROXY_HOST:-unknown}
-External IP: ${EXTERNAL_IP:-unknown}
-Port: ${PORT:-unknown}
-Base Secret: ${SECRET:-unknown}
-Registration Secret (plain, for @MTProxybot): ${SECRET:-unknown}
-TLS Domain: ${TLS_DOMAIN:-unknown}
-
-Working Connection Links:
-------------------------
-Plain Link (for registration): ${PLAIN_LINK:-Not available}
-DD Link: ${DD_LINK:-Not available}
-TLS Link: ${EE_LINK:-Not available}
-
-Web Browser Links:
------------------
-Plain: $(echo "${PLAIN_LINK:-Not available}" | sed 's|tg://|https://t.me/|')
-DD: $(echo "${DD_LINK:-Not available}" | sed 's|tg://|https://t.me/|')
-TLS: $(echo "${EE_LINK:-Not available}" | sed 's|tg://|https://t.me/|')
-
-Service Management:
-------------------
-Status:  mtproxy status
-Start:   mtproxy start
-Stop:    mtproxy stop
-Restart: mtproxy restart
-Logs:    mtproxy logs
-Stats:   mtproxy stats
-Info:    mtproxy info
-Update:  mtproxy update
-
-Last Updated: $(date)
-EOL
-}
-
-# Main command handler
 case "${1:-status}" in
     "start")
         echo -e "${YELLOW}$U_STARTING${NC}"
         systemctl start $SERVICE_NAME
-        sleep 2
-        if systemctl is-active --quiet $SERVICE_NAME; then
-            echo -e "${GREEN}$U_START_OK${NC}"
-            update_info_file
-            show_links
-        else
-            echo -e "${RED}$U_START_FAIL${NC}"
-            exit 1
-        fi
+        echo -e "${GREEN}$U_START_OK${NC}"
+        show_links
         ;;
     "stop")
         echo -e "${YELLOW}$U_STOPPING${NC}"
@@ -1020,19 +711,21 @@ case "${1:-status}" in
     "restart")
         echo -e "${YELLOW}$U_RESTARTING${NC}"
         systemctl restart $SERVICE_NAME
-        sleep 2
-        if systemctl is-active --quiet $SERVICE_NAME; then
-            echo -e "${GREEN}$U_RESTART_OK${NC}"
-            update_info_file
-            show_links
-        else
-            echo -e "${RED}$U_RESTART_FAIL${NC}"
-            exit 1
-        fi
+        echo -e "${GREEN}$U_RESTART_OK${NC}"
+        show_links
+        ;;
+    "reload")
+        echo -e "${YELLOW}$U_RELOADING${NC}"
+        systemctl reload $SERVICE_NAME
+        echo -e "${GREEN}$U_RELOAD_OK${NC}"
         ;;
     "status")
         show_status
-        update_info_file
+        ;;
+    "update")
+        echo -e "${YELLOW}Запуск проверки обновлений / Checking for updates...${NC}"
+        /usr/local/bin/teleproxy-updater
+        echo -e "${GREEN}Готово! / Done!${NC}"
         ;;
     "links")
         show_links
@@ -1047,58 +740,6 @@ case "${1:-status}" in
     "stats")
         show_stats
         ;;
-    "update")
-        update_config
-        ;;
-    "test")
-        echo -e "${YELLOW}$U_TESTING${NC}"
-        get_service_config
-        if [[ -n "$PORT" ]]; then
-            echo -e "$U_PORT_TEST $PORT..."
-            if command -v nc >/dev/null 2>&1; then
-                if timeout 5 nc -z localhost "$PORT" 2>/dev/null; then
-                    echo -e "${GREEN}$U_PORT_OPEN${NC}"
-                else
-                    echo -e "${RED}$U_PORT_CLOSED${NC}"
-                fi
-            elif command -v telnet >/dev/null 2>&1; then
-                if timeout 5 bash -c "echo | telnet localhost $PORT" 2>/dev/null | grep -q "Connected"; then
-                    echo -e "${GREEN}$U_PORT_OPEN${NC}"
-                else
-                    echo -e "${RED}$U_PORT_CLOSED${NC}"
-                fi
-            else
-                echo -e "${YELLOW}$U_NO_NC${NC}"
-            fi
-
-            # Check if service is actually listening
-            if ss -tlnp 2>/dev/null | grep -q ":$PORT "; then
-                echo -e "${GREEN}$U_LISTENING $PORT${NC}"
-            else
-                echo -e "${RED}$U_NOT_LISTENING $PORT${NC}"
-            fi
-
-            # Check statistics endpoint
-            stats_port="${STATS_PORT:-2398}"
-            STATS=$(curl -s --connect-timeout 3 "http://localhost:$stats_port/stats" 2>/dev/null)
-            if [[ -n "$STATS" ]]; then
-                echo -e "${GREEN}$U_STATS_OK${NC}"
-            else
-                echo -e "${YELLOW}$U_STATS_FAIL${NC}"
-            fi
-
-            # Check logs for errors
-            RECENT_ERRORS=$(journalctl -u mtproxy --no-pager -n 10 --since "10 minutes ago" | grep -i "error\|fail\|exception" | tail -3)
-            if [[ -n "$RECENT_ERRORS" ]]; then
-                echo -e "${RED}$U_RECENT_ERR${NC}"
-                echo "$RECENT_ERRORS"
-            else
-                echo -e "${GREEN}$U_NO_ERRORS${NC}"
-            fi
-        else
-            echo -e "${RED}$U_NO_PORT${NC}"
-        fi
-        ;;
     "help"|"-h"|"--help")
         show_help
         ;;
@@ -1110,42 +751,37 @@ case "${1:-status}" in
 esac
 UTILITY_EOF
 
-# Move the utility to final location and set permissions
-mv "/tmp/mtproxy_utility" "/usr/local/bin/mtproxy"
-chmod +x "/usr/local/bin/mtproxy"
+mv "/tmp/teleproxy_utility" "/usr/local/bin/teleproxy-ctl"
+chmod +x "/usr/local/bin/teleproxy-ctl"
 
-# Reload and start service
 systemctl daemon-reload
 systemctl enable $SERVICE_NAME
 systemctl start $SERVICE_NAME
 
 sleep 3
 
-# Check service status and create info file
 if systemctl is-active --quiet $SERVICE_NAME; then
-    echo -e "${GREEN}$MSG_SVC_RUNNING${NC}"
-
-    # Update info file using the management utility
-    /usr/local/bin/mtproxy status
-
+    echo -e "\n${GREEN}$MSG_SVC_RUNNING${NC}"
     echo -e "\n${YELLOW}$MSG_COMPLETE${NC}"
     echo -e "\n${CYAN}$MSG_QUICK${NC}"
-    echo -e "${GREEN}mtproxy${NC}         - $MSG_QUICK1"
-    echo -e "${GREEN}mtproxy restart${NC} - $MSG_QUICK2"
-    echo -e "${GREEN}mtproxy links${NC}   - $MSG_QUICK3"
-    echo -e "${GREEN}mtproxy stats${NC}   - $MSG_QUICK4"
-    echo -e "${GREEN}mtproxy update${NC}  - $MSG_QUICK5"
-    echo -e "${GREEN}mtproxy help${NC}    - $MSG_QUICK6"
-
+    echo -e "${GREEN}teleproxy-ctl${NC}         - $MSG_QUICK1"
+    echo -e "${GREEN}teleproxy-ctl restart${NC} - $MSG_QUICK2"
+    echo -e "${GREEN}teleproxy-ctl links${NC}   - $MSG_QUICK3"
+    echo -e "${GREEN}teleproxy-ctl update${NC}  - Обновить бинарник Teleproxy"
+    echo -e "${GREEN}teleproxy-ctl reload${NC}  - Обновить секреты/конфиг без прерывания"
+    echo -e "${GREEN}teleproxy-ctl stats${NC}   - $MSG_QUICK4"
+    echo -e "${GREEN}teleproxy-ctl help${NC}    - $MSG_QUICK6"
+    echo ""
+    /usr/local/bin/teleproxy-ctl links
 else
     echo -e "${RED}$MSG_SVC_FAIL${NC}"
     systemctl status $SERVICE_NAME --no-pager
     exit 1
 fi
 
-echo -e "\n${BLUE}$MSG_SAVED ${GREEN}$INSTALL_DIR/info.txt${NC}"
-echo -e "${BLUE}$MSG_UTIL_PATH ${GREEN}/usr/local/bin/mtproxy${NC}"
+echo -e "\n${BLUE}$MSG_SAVED ${GREEN}$CONFIG_DIR/config.toml${NC}"
+echo -e "${BLUE}$MSG_UTIL_PATH ${GREEN}/usr/local/bin/teleproxy-ctl${NC}"
 echo -e "${BLUE}$MSG_AUTOSTART${NC}"
-echo -e "${BLUE}$MSG_STATS_INFO ${GREEN}curl http://localhost:$STATS_PORT/stats${NC}"
+echo -e "${BLUE}$MSG_STATS_INFO ${GREEN}http://$EXTERNAL_IP:$STATS_PORT${NC}"
 echo -e "\n${YELLOW}$MSG_REMOVE_LATER${NC}"
 echo -e "${GREEN}$0 uninstall${NC}"

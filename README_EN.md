@@ -1,51 +1,44 @@
-# MTProxy Installer (GetPageSpeed Fork)
+# Teleproxy Installer
 
 🌐 **Language:** [Русский](README.md) | English
 
-Automated installer and manager for **MTProxy** based on [GetPageSpeed/MTProxy](https://github.com/GetPageSpeed/MTProxy) — a community fork with improved stability and support.
+Automated installer and manager for **Teleproxy** — a next-generation, high-performance MTProto proxy with advanced DPI resistance, Fake-TLS masking, and Direct-to-DC architecture. It entirely replaces the obsolete MTProxy. Based correctly on the latest [teleproxy/teleproxy](https://github.com/teleproxy/teleproxy) engine.
 
 ## ✨ Features
 
 ### 🚀 Installation
-- **Build from source** — automatic cloning and compilation of the latest GetPageSpeed/MTProxy version
-- **Interactive setup** — step-by-step wizard with port, TLS domain, and link domain selection
-- **Auto IPv4 detection** — external IP is detected automatically via multiple services
-- **NAT auto-detect** — detects servers behind NAT (Yandex Cloud, AWS, etc.) and adds `--nat-info` automatically
-- **TLS 1.3 verification** — checks TLS 1.3 support for the selected domain via `openssl` before installation
-- **Systemd service** — auto-start on reboot, managed via systemctl
-- **UFW integration** — automatic firewall port opening
-- **Bilingual** — supports English and Russian interface (selected during installation)
+- **Ultra-fast setup** — no source code compiling anymore! It automatically detects your machine architecture (`amd64`/`arm64`) and downloads the appropriate static binary directly from GitHub.
+- **Interactive setup** — step-by-step wizard with port, fake-TLS domain selection.
+- **Modern Configuration** — automatically generates the new `config.toml` structure.
+- **Auto IPv4 detection** — external IP is detected automatically via multiple APIs.
+- **Systemd service** — auto-start on reboot, managed via systemctl (`teleproxy.service`).
+- **Bilingual** — supports English and Russian interface (selected during installation).
 
-### 🔒 Security
-- **Fake-TLS (EE mode)** — traffic masking as TLS 1.3 with configurable domain
-- **DD mode** — random padding support for DPI bypass
-- **Secret generation** — automatic cryptographically secure secret generation
-- **Secret preservation** — existing secret is preserved from `info.txt` during reinstallation
+### 🔒 Security & Evasion
+- **Fake-TLS** — perfectly masks MTProto traffic as standard TLS 1.3 web traffic.
+- **Direct-to-DC mode** — bypasses middleware servers and connects straight to Telegram Datacenters (no daily list-downloads needed).
+- **State-of-the-art obfuscation** — features Dynamic Record Sizing (DRS), E2E fingerprint masking and replay-attack resistance.
+- **Secret generation** — automatic cryptographically secure secret creation.
 
-### 🌐 Connection
-- **Optional domain** — use a domain name instead of IP address for connection links
-- **3 link types** — Plain (for @MTProxybot registration), DD, and TLS (EE)
-- **tg:// and https:// formats** — links are generated in both formats
-
-### 🛠️ Management (`mtproxy` CLI)
+### 🛠️ Management (`teleproxy-ctl` CLI)
+After installation, a handy manager is accessible from anywhere using `teleproxy-ctl`:
 
 | Command | Description |
 |---------|-------------|
-| `mtproxy status` | Service status + connection links |
-| `mtproxy start` | Start the service |
-| `mtproxy stop` | Stop the service |
-| `mtproxy restart` | Restart the service |
-| `mtproxy logs` | View real-time logs |
-| `mtproxy links` | Show connection links only |
-| `mtproxy info` | Detailed configuration info |
-| `mtproxy stats` | Proxy statistics (HTTP endpoint) |
-| `mtproxy update` | Update Telegram configuration |
-| `mtproxy test` | Connectivity test and diagnostics |
+| `teleproxy-ctl status` | Service status + connection links |
+| `teleproxy-ctl start` | Start the service |
+| `teleproxy-ctl stop` | Stop the service |
+| `teleproxy-ctl restart` | Hard restart |
+| `teleproxy-ctl reload` | **(NEW)** Reload TOML configuration on the fly without dropping traffic |
+| `teleproxy-ctl logs` | View real-time logs |
+| `teleproxy-ctl links` | Show connection links and QR codes |
+| `teleproxy-ctl info` | Detailed configuration info |
+| `teleproxy-ctl stats` | Prometheus-compatible HTTP metric stats |
+| `teleproxy-ctl update` | **(NEW)** Check for Teleproxy binary updates and install them instantly |
 
 ### 📦 Maintenance
-- **Cron job** — daily `proxy-multi.conf` update from Telegram servers
-- **Full uninstall** — `./mtproxy.sh uninstall` removes everything: service, files, cron, firewall rules
-- **Smart uninstall** — only the configured port rule is removed, other rules are untouched
+- **Cron updater** — standardly checks for Teleproxy binary updates every 3 days in the background cleanly.
+- **Full uninstall** — running `./mtproxy.sh uninstall` scrubs everything: systemd files, cron jobs, updater scripts, and `/etc` configs.
 
 ## 📋 Usage
 
@@ -53,11 +46,12 @@ Automated installer and manager for **MTProxy** based on [GetPageSpeed/MTProxy](
 ```bash
 bash <(wget -q -O - https://raw.githubusercontent.com/EikeiDev/mtproxy-installer/refs/heads/main/mtproxy.sh)
 ```
+*(Change the URL to match your repo structure)*
 
 **Management:**
 ```bash
-mtproxy status
-mtproxy restart
+teleproxy-ctl status
+teleproxy-ctl links
 ```
 
 **Uninstall:**
@@ -67,6 +61,7 @@ bash <(wget -q -O - https://raw.githubusercontent.com/EikeiDev/mtproxy-installer
 
 ## 📌 Requirements
 
-- **OS:** Debian / Ubuntu (apt)
-- **Privileges:** root
-- **Dependencies:** installed automatically (`git`, `build-essential`, `libssl-dev`, `zlib1g-dev`, `xxd`)
+- **OS:** Debian / Ubuntu, CentOS, AlmaLinux, Rocky Linux, macOS
+- **Arch:** x86_64 or aarch64 (ARM64)
+- **Privileges:** root or sudo
+- **Dependencies:** `curl`, `xxd`
