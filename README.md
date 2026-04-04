@@ -46,7 +46,6 @@
 ```bash
 bash <(wget -q -O - https://raw.githubusercontent.com/EikeiDev/mtproxy-installer/refs/heads/main/mtproxy.sh)
 ```
-*(Замените ссылку на актуальную в репозитории)*
 
 **Управление:**
 ```bash
