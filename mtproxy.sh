@@ -1,13 +1,5 @@
 #!/bin/bash
 
-# Teleproxy Installation Script
-# Downloads binary, creates TOML config, creates systemd service,
-# and creates management utility in /usr/local/bin/teleproxy-ctl
-#
-# Usage:
-#   ./mtproxy.sh          - Install Teleproxy
-#   ./mtproxy.sh uninstall - Remove Teleproxy completely
-
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -86,6 +78,11 @@ if [[ "$1" == "ru" ]]; then
     MSG_TLS_EXAMPLES="Примеры: cloudflare.com, microsoft.com, apple.com"
     MSG_TLS_PROMPT="Введите TLS домен для маскировки (по умолчанию"
     MSG_TLS_USING="Используется TLS домен:"
+    MSG_MODE_PROMPT="Спонсорский канал: (1) Приватный/Direct (2) Публичный с рекламой (Relay) [1]: "
+    MSG_TAG_PROMPT="Введите ваш Ad Tag от @MTProxybot (оставьте пустым для пропуска): "
+    MSG_SOCKS5_PROMPT="Направить трафик через внешний SOCKS5 прокси? (Формат: socks5://user:pass@ip:port - пусто для пропуска): "
+    MSG_HIDDEN_PROMPT="Скрыть сервис за VPN/Xray? (Не открывать публичный порт в Firewall) [y/N]: "
+    MSG_PROXY_PROTO_PROMPT="Включить поддержку PROXY Protocol? (ТОЛЬКО если прокси работает за балансировщиком Xray/Nginx) [y/N]: "
     MSG_WORKERS="Используется 1 воркер (по умолчанию)"
     MSG_SERVICE_CREATE="Создание systemd сервиса..."
     MSG_UFW_OPEN="UFW: Открыт порт"
@@ -98,7 +95,10 @@ if [[ "$1" == "ru" ]]; then
     MSG_QUICK2="Перезапуск сервиса"
     MSG_QUICK3="Ссылки подключения"
     MSG_QUICK4="Статистика прокси"
+    MSG_QUICK5="Обновить бинарник Teleproxy"
     MSG_QUICK6="Все команды"
+    MSG_QUICK7="Обновить секреты/конфиг без прерывания"
+    MSG_QUICK8="Выполнить диагностику"
     MSG_SAVED="📄 Конфигурация сохранена в:"
     MSG_UTIL_PATH="🔧 Утилита управления:"
     MSG_AUTOSTART="🔄 Сервис запускается автоматически"
@@ -162,6 +162,11 @@ else
     MSG_TLS_EXAMPLES="Examples: cloudflare.com, github.com, microsoft.com"
     MSG_TLS_PROMPT="Enter TLS domain for masking (default"
     MSG_TLS_USING="Using TLS domain:"
+    MSG_MODE_PROMPT="Sponsored Channel: (1) Private/Direct (2) Public with Ads (Relay) [1]: "
+    MSG_TAG_PROMPT="Enter your Ad Tag from @MTProxybot (leave empty to skip): "
+    MSG_SOCKS5_PROMPT="Route Telegram traffic through upstream SOCKS5? (Format: socks5://user:pass@ip:port - leave empty to skip): "
+    MSG_HIDDEN_PROMPT="Hide service behind VPN/Xray? (Do not open public firewall port) [y/N]: "
+    MSG_PROXY_PROTO_PROMPT="Enable PROXY Protocol? (ONLY if using HAProxy, Nginx, or Xray outbounds) [y/N]: "
     MSG_WORKERS="Using 1 worker (default)"
     MSG_SERVICE_CREATE="Creating systemd service..."
     MSG_UFW_OPEN="UFW: Opened port"
@@ -174,7 +179,10 @@ else
     MSG_QUICK2="Restart service"
     MSG_QUICK3="Show connection links"
     MSG_QUICK4="Show proxy statistics"
+    MSG_QUICK5="Update Teleproxy binary"
     MSG_QUICK6="Show all commands"
+    MSG_QUICK7="Reload config without downtime"
+    MSG_QUICK8="Run diagnostics"
     MSG_SAVED="📄 Configuration saved to:"
     MSG_UTIL_PATH="🔧 Management utility:"
     MSG_AUTOSTART="🔄 Service will auto-start on boot"
@@ -230,11 +238,13 @@ if [[ "$1" == "uninstall" ]]; then
     fi
     
     if [[ -n "$UNINSTALL_PORT" ]]; then
-        if command -v ufw &> /dev/null && ufw status | grep -q "Status: active"; then
-            if ufw status | grep -q "${UNINSTALL_PORT}/tcp"; then
-                echo -e "${YELLOW}$MSG_RM_FIREWALL $UNINSTALL_PORT...${NC}"
-                ufw delete allow ${UNINSTALL_PORT}/tcp 2>/dev/null
-            fi
+        if command -v ufw >/dev/null 2>&1 && ufw status | grep -qw active; then
+            echo -e "${YELLOW}$MSG_RM_FIREWALL $UNINSTALL_PORT...${NC}"
+            ufw delete allow ${UNINSTALL_PORT}/tcp >/dev/null 2>&1
+        elif command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active firewalld >/dev/null 2>&1; then
+            echo -e "${YELLOW}$MSG_RM_FIREWALL $UNINSTALL_PORT...${NC}"
+            firewall-cmd --remove-port=${UNINSTALL_PORT}/tcp --permanent >/dev/null 2>&1
+            firewall-cmd --reload >/dev/null 2>&1
         fi
     fi
     
@@ -405,6 +415,34 @@ read -p "$MSG_TLS_PROMPT: $RANDOM_DOMAIN): " USER_TLS_DOMAIN
 TLS_DOMAIN=${USER_TLS_DOMAIN:-$RANDOM_DOMAIN}
 echo -e "${GREEN}$MSG_TLS_USING $TLS_DOMAIN${NC}"
 
+# Ad Tag and Direct Mode
+read -p "$MSG_MODE_PROMPT" USER_MODE
+if [[ "$USER_MODE" == "2" ]]; then
+    USE_DIRECT="false"
+    read -p "$MSG_TAG_PROMPT" USER_AD_TAG
+else
+    USE_DIRECT="true"
+fi
+
+# SOCKS5 Upstream
+read -p "$MSG_SOCKS5_PROMPT" USER_SOCKS5
+
+# Hidden / Firewall bypass
+read -p "$MSG_HIDDEN_PROMPT" USER_HIDDEN
+if [[ "$USER_HIDDEN" =~ ^[Yy]$ ]]; then
+    HIDE_FIREWALL="true"
+else
+    HIDE_FIREWALL="false"
+fi
+
+# PROXY Protocol
+read -p "$MSG_PROXY_PROTO_PROMPT" USER_PROXY_PROTO
+if [[ "$USER_PROXY_PROTO" =~ ^[Yy]$ ]]; then
+    USE_PROXY_PROTO="true"
+else
+    USE_PROXY_PROTO="false"
+fi
+
 if ! id "$SERVICE_USER" >/dev/null 2>&1; then
     useradd --system --no-create-home --shell /usr/sbin/nologin "$SERVICE_USER"
 fi
@@ -413,12 +451,24 @@ cat > "$CONFIG_DIR/config.toml" << EOL
 # Teleproxy configuration
 # Edit and run: systemctl reload teleproxy
 port = $PORT
+proxy_protocol = $USE_PROXY_PROTO
 stats_port = $STATS_PORT
 http_stats = true
 user = "$SERVICE_USER"
-direct = true
+direct = $USE_DIRECT
 workers = $WORKERS
 domain = "$TLS_DOMAIN"
+EOL
+
+if [[ -n "$USER_SOCKS5" ]]; then
+    echo "socks5 = \"$USER_SOCKS5\"" >> "$CONFIG_DIR/config.toml"
+fi
+
+if [[ -n "$USER_AD_TAG" ]]; then
+    echo "ad_tag = \"$USER_AD_TAG\"" >> "$CONFIG_DIR/config.toml"
+fi
+
+cat >> "$CONFIG_DIR/config.toml" << EOL
 
 [[secret]]
 key = "$USER_SECRET"
@@ -432,6 +482,16 @@ cat > "$CONFIG_DIR/info.txt" << EOL
 External IP: $EXTERNAL_IP
 Proxy Host: $PROXY_HOST
 EOL
+
+# TCP BBR Auto-Tuning
+if ! grep -q "net.ipv4.tcp_congestion_control" /etc/sysctl.conf 2>/dev/null; then
+    echo -e "${YELLOW}Optimizing TCP with BBR...${NC}"
+    echo -e "\n# TCP BBR Tuning for Protocol Proxy" >> /etc/sysctl.conf
+    echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
+    echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
+    echo "net.ipv4.tcp_fastopen=3" >> /etc/sysctl.conf
+    sysctl -p >/dev/null 2>&1
+fi
 
 echo -e "${YELLOW}$MSG_SERVICE_CREATE${NC}"
 cat > "/etc/systemd/system/$SERVICE_NAME.service" << EOL
@@ -460,11 +520,18 @@ EOL
 
 chown -R root:root "$CONFIG_DIR/info.txt"
 
-if command -v ufw &> /dev/null; then
-    if ufw status | grep -q "Status: active"; then
-        ufw allow $PORT/tcp
-        echo -e "${GREEN}$MSG_UFW_OPEN $PORT/tcp${NC}"
+# Firewall Auto-Configuration
+if [[ "$HIDE_FIREWALL" != "true" ]]; then
+    if command -v ufw >/dev/null 2>&1 && ufw status | grep -qw active; then
+        echo -e "${YELLOW}Configuring UFW firewall for port $PORT...${NC}"
+        ufw allow $PORT/tcp >/dev/null 2>&1
+    elif command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active firewalld >/dev/null 2>&1; then
+        echo -e "${YELLOW}Configuring Firewalld for port $PORT...${NC}"
+        firewall-cmd --add-port=$PORT/tcp --permanent >/dev/null 2>&1
+        firewall-cmd --reload >/dev/null 2>&1
     fi
+else
+    echo -e "${YELLOW}Skipping firewall configuration (Hidden VPN/Xray mode active).${NC}"
 fi
 
 echo -e "${YELLOW}Создание автоматического обновления (cron)...${NC}"
@@ -536,8 +603,29 @@ if [[ "$LANG_SEL" == "ru" ]]; then
     U_INFO="Детальная информация"
     U_STATS_CMD="Статистика прокси"
     U_HELP_CMD="Показать справку"
+    U_USER_ADD="Добавить юзера (teleproxy-ctl user-add [лейбл] [квота_10G] [макс_ip])"
+    U_USER_DEL="Удалить секрет (teleproxy-ctl user-del <секрет>)"
+    U_USERS="Список всех активных секретов"
+    U_BACKUP="Создать резервную копию конфигурации"
+    U_RESTORE="Восстановить конфигурацию из копии"
+    U_CHECK="Выполнить самодиагностику и проверить сервера Telegram"
     U_SVC_RUNNING="✅ Сервис: Работает"
     U_SVC_STOPPED="❌ Сервис: Остановлен"
+    U_MSG_USER_DEL_USAGE="Использование: teleproxy-ctl user-del <секрет>"
+    U_MSG_USER_DEL_OK="🗑️ Секрет"
+    U_MSG_USER_DEL_OK2="удален!"
+    U_MSG_USER_ADD_OK="✅ Новый юзер создан! Лейбл:"
+    U_MSG_USER_ADD_OK2="Секрет:"
+    U_MSG_USERS_TITLE="=== Активные Секреты ==="
+    U_MSG_BACKUP_PASS="Введите пароль для шифрования бэкапа: "
+    U_MSG_BACKUP_OK="✅ Бэкап сохранен в"
+    U_MSG_REST_USAGE="Использование: teleproxy-ctl restore <файл.tar.gz>"
+    U_MSG_REST_ERR="Файл не найден!"
+    U_MSG_REST_PASS="Введите пароль для расшифровки: "
+    U_MSG_REST_OK="♻️ Конфигурация восстановлена из"
+    U_MSG_CHECK="Запуск глубокой диагностики..."
+    U_MSG_UPDATE_START="Запуск проверки обновлений..."
+    U_MSG_UPDATE_OK="Готово!"
     U_CONFIG="📊 Конфигурация:"
     U_PORT="Порт"
     U_SECRET="Секрет"
@@ -576,8 +664,29 @@ else
     U_INFO="Show detailed configuration"
     U_STATS_CMD="Show proxy statistics"
     U_HELP_CMD="Show this help"
+    U_USER_ADD="Add user (teleproxy-ctl user-add [label] [quota_10G] [max_ips])"
+    U_USER_DEL="Delete user (teleproxy-ctl user-del <secret>)"
+    U_USERS="List all active secrets"
+    U_BACKUP="Backup proxy configuration"
+    U_RESTORE="Restore config from archive (teleproxy-ctl restore <file>)"
+    U_CHECK="Run self-diagnostics and check Telegram servers"
     U_SVC_RUNNING="✅ Service: Running"
     U_SVC_STOPPED="❌ Service: Stopped"
+    U_MSG_USER_DEL_USAGE="Usage: teleproxy-ctl user-del <secret>"
+    U_MSG_USER_DEL_OK="🗑️ Secret"
+    U_MSG_USER_DEL_OK2="deleted!"
+    U_MSG_USER_ADD_OK="✅ New user created! Label:"
+    U_MSG_USER_ADD_OK2="Secret:"
+    U_MSG_USERS_TITLE="=== Active Secrets ==="
+    U_MSG_BACKUP_PASS="Enter password for backup encryption: "
+    U_MSG_BACKUP_OK="✅ Backup saved to"
+    U_MSG_REST_USAGE="Usage: teleproxy-ctl restore <backup_file.tar.gz>"
+    U_MSG_REST_ERR="File not found!"
+    U_MSG_REST_PASS="Enter password to decrypt backup: "
+    U_MSG_REST_OK="♻️ Config restored from"
+    U_MSG_CHECK="Running Deep Diagnostics..."
+    U_MSG_UPDATE_START="Checking for updates..."
+    U_MSG_UPDATE_OK="Done!"
     U_CONFIG="📊 Configuration:"
     U_PORT="Port"
     U_SECRET="Secret"
@@ -617,31 +726,45 @@ show_help() {
     echo -e "  ${GREEN}links${NC}     - $U_LINKS"
     echo -e "  ${GREEN}info${NC}      - $U_INFO"
     echo -e "  ${GREEN}stats${NC}     - $U_STATS_CMD"
+    echo -e "  ${GREEN}user-add${NC}  - $U_USER_ADD"
+    echo -e "  ${GREEN}user-del${NC}  - $U_USER_DEL"
+    echo -e "  ${GREEN}users${NC}     - $U_USERS"
+    echo -e "  ${GREEN}check${NC}     - $U_CHECK"
+    echo -e "  ${GREEN}backup${NC}    - $U_BACKUP"
+    echo -e "  ${GREEN}restore${NC}   - $U_RESTORE"
     echo -e "  ${GREEN}help${NC}      - $U_HELP_CMD"
 }
 
 get_config_vars() {
     PORT=$(grep "^port = " $CONFIG_DIR/config.toml | awk '{print $3}')
     STATS_PORT=$(grep "^stats_port = " $CONFIG_DIR/config.toml | awk '{print $3}')
-    TLS_DOMAIN=$(grep "^domain = " $CONFIG_DIR/config.toml | cut -d'"' -f2 || true)
-    SECRET=$(grep "^key = " $CONFIG_DIR/config.toml | cut -d'"' -f2 || true)
+    TLS_DOMAIN=$(grep "^domain = " $CONFIG_DIR/config.toml | cut -d'"' -f2 | head -1 || true)
+    SECRETS=$(grep "^key = " $CONFIG_DIR/config.toml | cut -d'"' -f2 || true)
     PROXY_HOST=$(grep "Proxy Host:" $CONFIG_DIR/info.txt 2>/dev/null | awk '{print $3}')
     if [[ -z "$PROXY_HOST" ]]; then PROXY_HOST="127.0.0.1"; fi
 }
 
 show_links() {
     get_config_vars
-    if [[ -n "$PORT" && -n "$SECRET" ]]; then
-        echo -e "${YELLOW}$U_CONN_LINKS${NC}"
+    if [[ -n "$PORT" && -n "$SECRETS" ]]; then
         domain_hex=""
         if [[ -n "$TLS_DOMAIN" ]]; then
             domain_hex=$(echo -n "$TLS_DOMAIN" | xxd -p | tr -d '\n')
-            full_secret="ee${SECRET}${domain_hex}"
-        else
-            full_secret="$SECRET"
         fi
-        
-        $BIN_FILE link --server "$PROXY_HOST" --port "$PORT" --secret "$full_secret"
+        for SEC in $SECRETS; do
+            echo -e "${BLUE}👤 User Secret: ${GREEN}${SEC:0:8}...${NC}"
+            echo -ne "  CLASSIC (Raw): "
+            $BIN_FILE link --server "$PROXY_HOST" --port "$PORT" --secret "$SEC"
+            
+            echo -ne "  SECURE (dd):   "
+            $BIN_FILE link --server "$PROXY_HOST" --port "$PORT" --secret "dd${SEC}"
+            
+            if [[ -n "$domain_hex" ]]; then
+                echo -ne "  TLS (ee):      "
+                $BIN_FILE link --server "$PROXY_HOST" --port "$PORT" --secret "ee${SEC}${domain_hex}"
+            fi
+            echo ""
+        done
     else
         echo -e "${RED}$U_NO_LINKS${NC}"
         return 1
@@ -661,7 +784,8 @@ show_status() {
     get_config_vars
     echo -e "${YELLOW}$U_CONFIG${NC}"
     echo -e "   $U_PORT: ${GREEN}${PORT:-unknown}${NC}"
-    echo -e "   $U_SECRET: ${GREEN}${SECRET:-unknown}${NC}"
+    SECRET_COUNT=$(echo "$SECRETS" | wc -w)
+    echo -e "   $U_SECRET: ${GREEN}$SECRET_COUNT active secrets${NC}"
     echo -e "   $U_TLS_DOMAIN: ${GREEN}${TLS_DOMAIN:-none}${NC}"
     echo -e "   $U_PROXY_HOST: ${GREEN}${PROXY_HOST:-unknown}${NC}"
 
@@ -719,13 +843,60 @@ case "${1:-status}" in
         systemctl reload $SERVICE_NAME
         echo -e "${GREEN}$U_RELOAD_OK${NC}"
         ;;
+    "user-add")
+        LABEL="${2:-guest}"
+        QUOTA="${3}"
+        MAX_IPS="${4}"
+        
+        NEW_SEC="$($BIN_FILE generate-secret 2>/dev/null || head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+        
+        NEW_BLOCK="\n[[secret]]\nkey = \"$NEW_SEC\"\nlabel = \"$LABEL\""
+        if [[ -n "$QUOTA" ]]; then NEW_BLOCK="$NEW_BLOCK\nquota = \"$QUOTA\""; fi
+        if [[ -n "$MAX_IPS" ]]; then NEW_BLOCK="$NEW_BLOCK\nmax_ips = $MAX_IPS"; fi
+        
+        echo -e "$NEW_BLOCK" >> $CONFIG_DIR/config.toml
+        
+        systemctl reload $SERVICE_NAME
+        echo -e "\033[0;32m$U_MSG_USER_ADD_OK $LABEL, $U_MSG_USER_ADD_OK2 $NEW_SEC \033[0m"
+        $0 links
+        ;;
+    "user-del")
+        if [[ -z "$2" ]]; then echo "$U_MSG_USER_DEL_USAGE"; exit 1; fi
+        DEL_SEC="$2"
+        sed -i "/key = \"$DEL_SEC\"/d" $CONFIG_DIR/config.toml
+        systemctl reload $SERVICE_NAME
+        echo -e "\033[0;32m$U_MSG_USER_DEL_OK $DEL_SEC $U_MSG_USER_DEL_OK2\033[0m"
+        $0 links
+        ;;
+    "users")
+        get_config_vars
+        echo -e "\033[0;34m$U_MSG_USERS_TITLE\033[0m"
+        for SEC in $SECRETS; do echo "🔑 $SEC"; done
+        ;;
+    "backup")
+        BACKUP_FILE="/root/teleproxy_backup_$(date +%F_%H-%M).tar.gz"
+        read -s -p "$U_MSG_BACKUP_PASS" BACKUP_PASS
+        echo ""
+        tar -czf - -C / etc/teleproxy | openssl enc -aes-256-cbc -salt -pbkdf2 -pass pass:"$BACKUP_PASS" -out "$BACKUP_FILE"
+        echo -e "\033[0;32m$U_MSG_BACKUP_OK $BACKUP_FILE\033[0m"
+        ;;
+    "restore")
+        if [[ -z "$2" ]]; then echo "$U_MSG_REST_USAGE"; exit 1; fi
+        if [[ ! -f "$2" ]]; then echo "$U_MSG_REST_ERR"; exit 1; fi
+        read -s -p "$U_MSG_REST_PASS" RESTORE_PASS
+        echo ""
+        openssl enc -d -aes-256-cbc -pbkdf2 -pass pass:"$RESTORE_PASS" -in "$2" | tar -xzf - -C /
+        systemctl restart $SERVICE_NAME
+        echo -e "\033[0;32m$U_MSG_REST_OK $2!\033[0m"
+        $0 status
+        ;;
     "status")
         show_status
         ;;
     "update")
-        echo -e "${YELLOW}Запуск проверки обновлений / Checking for updates...${NC}"
+        echo -e "${YELLOW}$U_MSG_UPDATE_START${NC}"
         /usr/local/bin/teleproxy-updater
-        echo -e "${GREEN}Готово! / Done!${NC}"
+        echo -e "${GREEN}$U_MSG_UPDATE_OK${NC}"
         ;;
     "links")
         show_links
@@ -739,6 +910,10 @@ case "${1:-status}" in
         ;;
     "stats")
         show_stats
+        ;;
+    "check")
+        echo -e "\033[0;33m$U_MSG_CHECK\033[0m"
+        $BIN_FILE check --config $CONFIG_DIR/config.toml
         ;;
     "help"|"-h"|"--help")
         show_help
@@ -767,8 +942,9 @@ if systemctl is-active --quiet $SERVICE_NAME; then
     echo -e "${GREEN}teleproxy-ctl${NC}         - $MSG_QUICK1"
     echo -e "${GREEN}teleproxy-ctl restart${NC} - $MSG_QUICK2"
     echo -e "${GREEN}teleproxy-ctl links${NC}   - $MSG_QUICK3"
-    echo -e "${GREEN}teleproxy-ctl update${NC}  - Обновить бинарник Teleproxy"
-    echo -e "${GREEN}teleproxy-ctl reload${NC}  - Обновить секреты/конфиг без прерывания"
+    echo -e "${GREEN}teleproxy-ctl update${NC}  - $MSG_QUICK5"
+    echo -e "${GREEN}teleproxy-ctl reload${NC}  - $MSG_QUICK7"
+    echo -e "${GREEN}teleproxy-ctl check${NC}   - $MSG_QUICK8"
     echo -e "${GREEN}teleproxy-ctl stats${NC}   - $MSG_QUICK4"
     echo -e "${GREEN}teleproxy-ctl help${NC}    - $MSG_QUICK6"
     echo ""
